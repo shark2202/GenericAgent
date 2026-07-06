@@ -1,0 +1,207 @@
+name: Release
+
+# Tag-triggered release. Push a tag matching `v*` on main to fire.
+# Produces four portable distribution archives in parallel:
+#
+#   GenericAgent-<tag>-win-x64.zip
+#   GenericAgent-<tag>-mac-arm64.tar.gz
+#   GenericAgent-<tag>-mac-x64.tar.gz
+#   GenericAgent-<tag>-linux-x64.tar.gz
+#
+# Each archive contains the full GA source tree + a self-contained
+# CPython 3.11 runtime (python-build-standalone) with all GA deps
+# pre-installed. Users extract and run `run.cmd` / `run.sh` — no
+# system Python, uv, or compiler needed.
+#
+# Dev workflow unchanged: uv venv && uv pip install -e ".[ui]".
+# This CI is distribution-only.
+#
+# Mac Intel (mac-x64) cross-compiles on the macos-15 arm64 runner
+# via Rosetta 2 — the x86_64 PBS Python binary runs under Rosetta
+# to pip-install deps.
+#
+# Prerelease: tags containing `-` (e.g. v0.2.0-rc.1) are marked
+# prerelease. After all builds finish, a final job creates a DRAFT
+# GitHub Release for manual review before publishing.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            arch: linux-x64
+            archive_ext: tar.gz
+          - platform: macos-15
+            arch: mac-arm64
+            archive_ext: tar.gz
+          - platform: macos-15
+            arch: mac-x64
+            archive_ext: tar.gz
+            needs_rosetta: "true"
+          - platform: windows-2022
+            arch: win-x64
+            archive_ext: zip
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rosetta 2 (mac-x64 cross-compile on arm64 host)
+        if: matrix.needs_rosetta == 'true'
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Read PBS version pins
+        id: pbs
+        shell: bash
+        run: |
+          pbs_release="$(grep -E '^PBS_RELEASE=' scripts/bundle-python.sh | head -1 | cut -d= -f2 | tr -d '"')"
+          pbs_python="$(grep -E '^PBS_PYTHON_VERSION=' scripts/bundle-python.sh | head -1 | cut -d= -f2 | tr -d '"')"
+          if [[ -z "$pbs_release" || -z "$pbs_python" ]]; then
+            echo "Could not read PBS pins from scripts/bundle-python.sh" >&2
+            exit 1
+          fi
+          echo "release=$pbs_release" >> "$GITHUB_OUTPUT"
+          echo "python=$pbs_python" >> "$GITHUB_OUTPUT"
+
+      - name: Cache PBS tarball
+        uses: actions/cache@v4
+        with:
+          path: .cache/pbs
+          key: pbs-${{ matrix.arch }}-${{ steps.pbs.outputs.release }}-${{ steps.pbs.outputs.python }}
+
+      - name: Bundle Python interpreter + GA deps
+        shell: bash
+        run: ./scripts/bundle-python.sh ${{ matrix.arch }}
+
+      - name: Assemble distribution
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          ARCHIVE_EXT: ${{ matrix.archive_ext }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          REPO_ROOT="$(pwd)"
+          STAGE="$(mktemp -d)"
+          DIST_DIR="${STAGE}/GenericAgent"
+          mkdir -p "$DIST_DIR"
+
+          # Export GA source (tracked files only — .gitignore respected).
+          git archive --format=tar HEAD | tar -x -C "$DIST_DIR"
+
+          # Copy bundled Python into the distribution.
+          cp -R "${REPO_ROOT}/dist/python-bundle/${ARCH}/python" "${DIST_DIR}/python"
+
+          # Write launchers — all four so the archive is portable across OSes.
+          cat > "${DIST_DIR}/run.cmd" <<'CMD'
+          @echo off
+          cd /d "%~dp0"
+          if not exist mykey.jsonc copy mykey_template.jsonc mykey.jsonc >nul 2>&1
+          if not exist mykey.py copy mykey_template_en.py mykey.py >nul 2>&1
+          "python\python.exe" "launch.pyw" %*
+          CMD
+
+          cat > "${DIST_DIR}/run.sh" <<'SH'
+          #!/bin/sh
+          cd "$(dirname "$0")"
+          [ -f mykey.jsonc ] || [ -f mykey.py ] || { [ -f mykey_template.jsonc ] && cp mykey_template.jsonc mykey.jsonc || cp mykey_template_en.py mykey.py; }
+          exec "python/bin/python3" "launch.pyw" "$@"
+          SH
+          chmod +x "${DIST_DIR}/run.sh"
+
+          cat > "${DIST_DIR}/ga.cmd" <<'CMD'
+          @echo off
+          cd /d "%~dp0"
+          "python\python.exe" -m ga_cli %*
+          CMD
+
+          cat > "${DIST_DIR}/ga.sh" <<'SH'
+          #!/bin/sh
+          cd "$(dirname "$0")"
+          exec "python/bin/python3" -m ga_cli "$@"
+          SH
+          chmod +x "${DIST_DIR}/ga.sh"
+
+          # Determine version label.
+          VERSION="${TAG:-snapshot}"
+          ARCHIVE_NAME="GenericAgent-${VERSION}-${ARCH}"
+
+          # Create archive.
+          OUT_DIR="${REPO_ROOT}/dist/release"
+          mkdir -p "$OUT_DIR"
+
+          if [[ "$ARCHIVE_EXT" == "zip" ]]; then
+            7z a -tzip "${OUT_DIR}/${ARCHIVE_NAME}.zip" "${DIST_DIR}"
+          else
+            tar -czf "${OUT_DIR}/${ARCHIVE_NAME}.tar.gz" -C "$STAGE" GenericAgent
+          fi
+
+          echo "ASSEMBLED_ARCHIVE=${OUT_DIR}/${ARCHIVE_NAME}.${ARCHIVE_EXT}" >> "$GITHUB_ENV"
+          ls -lh "${OUT_DIR}/"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lR artifacts/
+
+      - name: Detect prerelease
+        id: meta
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$REF_NAME" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          name: GenericAgent ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/**/*
+          fail_on_unmatched_files: true
