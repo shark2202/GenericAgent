@@ -1,0 +1,185 @@
+// ══════════════════════════════════════════════════════════════════════════════
+//  GenericAgent — mykey.jsonc 配置模板（复制为 mykey.jsonc 后填入真实凭证）
+// ══════════════════════════════════════════════════════════════════════════════
+//
+//  快速上手：只需 3 步
+//    1. 把本文件复制为 mykey.jsonc
+//    2. 取消注释下方某个配置块，填入 apikey
+//    3. 运行 python agentmain.py / python launch.pyw
+//
+//  JSONC = JSON + 注释（// 行注释、/* 块注释 */）+ 尾逗号。
+//  加载顺序：mykey.py（Python）→ mykey.jsonc（JSONC）→ mykey.json（纯 JSON）。
+//  三者有任一即可，优先级从左到右。
+//
+//  ────────── Session 类型速查 ──────────
+//
+//  agentmain.py 扫描 key 名同时包含 'api'/'config'/'cookie' 的条目，
+//  根据 key 名里的关键字决定实例化哪个 Session 类型：
+//
+//      key 名关键字                          → Session 类             → 工具协议
+//      ─────────────────────────────────────────────────────────────────────────
+//      含 'native' 且 'claude'             → NativeClaudeSession    → API 原生 tool 字段
+//      含 'native' 且 'oai'               → NativeOAISession       → API 原生 tool 字段
+//      含 'mixin'                          → MixinSession           → 多 session 故障转移
+//
+//  ────────── apibase 自动拼接规则 ──────────
+//      "http://host:2001"                      → 补 /v1/chat/completions
+//      "http://host:2001/v1"                   → 补 /chat/completions
+//      "http://host:2001/v1/chat/completions"  → 原样使用
+//  NativeClaudeSession 会额外附加 ?beta=true。
+//
+//  ────────── 所有字段速查 ──────────
+//    apikey          必填。sk-ant-* 用 x-api-key 头；其它一律 Bearer。
+//    apibase         必填。参见上方拼接规则。
+//    model           必填。后缀 "[1m]" 触发 1M 上下文 beta。
+//    name            可选。展示名 & mixin 引用名。不填默认取 model。
+//    proxy           可选。单 session 代理。
+//    context_win     默认 24000（NativeClaudeSession 默认 28000）。历史裁剪阈值。
+//    max_retries     默认 1。
+//    connect_timeout 默认 5 秒。
+//    read_timeout    默认 30 秒。
+//    reasoning_effort  none/minimal/low/medium/high/xhigh
+//    thinking_type     adaptive/enabled/disabled（Claude 原生 thinking 块）
+//    thinking_budget_tokens  仅 thinking_type="enabled" 时生效
+//    temperature     默认 1.0。
+//    max_tokens      默认 8192。
+//    stream          默认 true。
+//    api_mode        "chat_completions"（默认）或 "responses"。仅 NativeOAISession。
+//    fake_cc_system_prompt  默认 false。CC 透传渠道必须置 true。
+//    user_agent      默认 "claude-cli/2.1.113 (external, cli)"。
+// ══════════════════════════════════════════════════════════════════════════════
+
+{
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║                     ★ 推荐最优配置（新手从这里开始）★                      ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  //
+  // 推荐使用 mixin 故障转移 + 多个 native session。
+  // mixin 会按 llm_nos 列表顺序尝试，第一个失败自动切下一个。
+
+  // ── Mixin 故障转移 ──────────────────────────────────────────────────────────
+  "mixin_config": {
+    "llm_nos": [],               // 默认空：桌面端添加模型后在设置里用 ➕ 加进来
+    // "llm_nos": ["cc-relay-1", "cc-relay-2", "gpt-native"],
+    "max_retries": 10,           // 整个 rotation 的总重试次数上限
+    "base_delay": 0.5,           // 指数退避起始延迟（秒）
+    // "spring_back": 300,        // 切到备用后多久再尝试回到第一个节点（秒）
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  1. NativeClaudeSession — Anthropic 原生协议 + 原生工具（推荐首选）
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // ── 1a. CC switch 适配渠道（最常用）────────────────────────────────────────
+  //  apikey 格式各异（sk-user-*, sk-*, cr_* 等），统一走 Bearer 鉴权。
+  //  必须设置 fake_cc_system_prompt: true。
+  // "native_claude_config0": {
+  //   "name": "cc-relay-1",
+  //   "apikey": "sk-user-<your-relay-key>",
+  //   "apibase": "https://<your-cc-switch-host>/claude/office",
+  //   "model": "claude-opus-4-7",
+  //   "fake_cc_system_prompt": true,
+  //   "thinking_type": "adaptive",
+  // },
+
+  // ── 1b. Anthropic 官方直连 ──────────────────────────────────────────────────
+  //  apikey 以 sk-ant- 开头 → 自动走 x-api-key 鉴权。不需要 fake_cc_system_prompt。
+  "native_claude_config": {
+    "name": "claude",                         // /llms 显示名 & mixin 引用名
+    "apikey": "sk-ant-<your-anthropic-key>",  // sk-ant- 前缀 → x-api-key 头
+    "apibase": "https://api.anthropic.com",   // 自动附加 ?beta=true
+    "model": "claude-opus-4-7[1m]",           // [1m] 触发 1M 上下文 beta
+    "thinking_type": "adaptive",              // adaptive | enabled | disabled
+    // "thinking_budget_tokens": 32768,        // 仅 thinking_type="enabled" 时生效
+    // "reasoning_effort": "high",             // none|minimal|low|medium|high|xhigh
+    "temperature": 1,                         // 默认 1.0
+    "max_tokens": 32768,                      // 默认 8192
+    // "context_win": 800000,                  // 默认 28000；历史裁剪阈值
+    // "stream": true,                         // 默认 true；CDN 截断 SSE 时改 false
+    // "max_retries": 3,
+    // "read_timeout": 180,
+  },
+
+  // ── 1c. 其他 Anthropic 兼容渠道（GLM / Kimi / MiniMax 等）───────────────────
+  //      厂商        apibase                                     model
+  //      智谱 GLM    https://open.bigmodel.cn/api/anthropic      glm-5.1
+  //      Kimi Coding https://api.kimi.com/coding                 kimi-for-coding
+  //      MiniMax     https://api.minimaxi.com/anthropic          MiniMax-M3
+  // "native_claude_config_vendor": {
+  //   "name": "glm-5.1",
+  //   "apikey": "<your-vendor-apikey>",
+  //   "apibase": "https://open.bigmodel.cn/api/anthropic",
+  //   "model": "glm-5.1",
+  //   "max_retries": 3,
+  //   "read_timeout": 180,
+  // },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  2. NativeOAISession — OpenAI 协议 + 原生工具
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  适合 GPT/o 系列、Gemini 或任何 OAI 兼容且支持原生 tool 字段的模型。
+
+  "native_oai_config": {
+    "name": "gpt",                            // /llms 显示名 & mixin 引用名
+    "apikey": "sk-<your-openai-key>",         // Bearer 鉴权
+    "apibase": "https://api.openai.com/v1",   // 补齐到 /v1/chat/completions
+    "model": "gpt-5.4",                       // gpt-5/o 系列
+    "api_mode": "chat_completions",           // chat_completions | responses
+    // "reasoning_effort": "high",             // none|minimal|low|medium|high|xhigh
+    // "max_retries": 3,
+    // "connect_timeout": 10,
+    // "read_timeout": 120,
+    // "temperature": 1.0,
+    // "max_tokens": 8192,
+    // "proxy": "http://127.0.0.1:2082",       // 可选单 session 代理
+    // "context_win": 16000,                   // 默认 24000；历史裁剪阈值
+  },
+
+  // ── Responses API 模式 ──────────────────────────────────────────────────────
+  //  对接 /v1/responses 端点。reasoning_effort 写进 payload.reasoning.effort。
+  // "native_oai_config_responses": {
+  //   "name": "gpt-responses",
+  //   "apikey": "sk-<your-openai-key>",
+  //   "apibase": "https://api.openai.com/v1",
+  //   "model": "gpt-5.4",
+  //   "api_mode": "responses",
+  //   "reasoning_effort": "high",
+  //   "max_retries": 2,
+  //   "read_timeout": 120,
+  // },
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  全局 HTTP 代理（所有没有单独指定 proxy 的 session 共用）
+  // ══════════════════════════════════════════════════════════════════════════════
+  // "proxy": "http://127.0.0.1:2082",
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  //  聊天平台集成（可选；未填写的平台不会启动对应 adapter）
+  // ══════════════════════════════════════════════════════════════════════════════
+  // "tg_bot_token": "84102K2gYZ...",
+  // "tg_allowed_users": [6806],
+
+  // "qq_app_id": "123456789",
+  // "qq_app_secret": "xxxxxxxxxxxxxxxx",
+  // "qq_allowed_users": ["your_user_openid"],
+
+  // "fs_app_id": "cli_xxxxxxxxxxxxxxxx",
+  // "fs_app_secret": "xxxxxxxxxxxxxxxx",
+  // "fs_allowed_users": ["ou_xxxxxxxxxxxxxxxx"],
+
+  // "wecom_bot_id": "your_bot_id",
+  // "wecom_secret": "your_bot_secret",
+  // "wecom_allowed_users": ["your_user_id"],
+  // "wecom_welcome_message": "你好，我在线上。",
+
+  // "dingtalk_client_id": "your_app_key",
+  // "dingtalk_client_secret": "your_app_secret",
+  // "dingtalk_allowed_users": ["your_staff_id"],
+
+  // ── Langfuse 追踪（可选）──────────────────────────────────────────────────
+  // "langfuse_config": {
+  //   "public_key": "pk-lf-...",
+  //   "secret_key": "sk-lf-...",
+  //   "host": "https://cloud.langfuse.com",
+  // },
+}
