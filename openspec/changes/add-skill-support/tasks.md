@@ -24,6 +24,8 @@
 
 ## 3. 验证
 
+<!-- review skipped: skill unavailable -->
+
 - [x] 3.1 启动 GA，检查 system_prompt 是否包含 skill catalog
   - 预期：`$HOME/.agents/skills/` 下的 skill 出现在 prompt 中
 

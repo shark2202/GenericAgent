@@ -74,6 +74,35 @@ def on_done(result: str):
 
 **核心原则**：不允许宣告完成，持续唤醒直到预算用完。检验标准不够高时，升级检验标准而非放过。
 
+#### 设计分析
+
+**状态机**：
+
+```
+running → (预算耗尽 或 轮次超限) → wrapping_up → (agent 跑完收口轮) → done_budget
+```
+
+`check()` 每次读 `goal_state.json`，算 elapsed/remaining。状态非 `running` 或 JSON 不存在时返回 `'/exit'` 终止。
+
+**两个 prompt 模板**：
+
+| 模板 | 触发 | 内容 |
+|---|---|---|
+| `CONTINUATION_PROMPT` | 预算未耗尽 | 注入 objective + 已用/剩余时间 + 轮次，指导 创造→检验→改进 循环。检验不达标则"升级检验标准"而非放过 |
+| `BUDGET_LIMIT_PROMPT` | 预算耗尽 | 收口：总结进展、列未完成项、清理临时文件。`on_done()` 回调标记 `done_budget` |
+
+**框架耦合度**：90% 内核与框架无关（状态管理、时间计算、prompt 模板——纯 Python，零依赖），仅 10% 耦合在 GA `--reflect` 协议壳上：
+
+| 接口 | 耦合原因 | 通用化方式 |
+|---|---|---|
+| `INTERVAL = 5` | GA 调度参数 | 改成目标框架的轮询间隔 |
+| `ONCE = False` | GA 循环控制 | 改成目标框架的单次/持续开关 |
+| `init(a)` | GA 配置注入 | 改成目标框架的初始化钩子 |
+| `check() → str丨'/exit'` | GA prompt 注入协议 | 改成目标框架的任务产生接口 |
+| `on_done(result)` | GA 结果回调 | 改成目标框架的后处理钩子 |
+
+**结论**：Goal Mode 本质是框架无关的**带时间预算的自治循环状态机**（objective + budget + status JSON → 定时注入 prompt），换框架只需替换外层 5 个接口适配点，内核逻辑不用动。
+
 ---
 
 ### 2. autonomous.py — 无人值守（INTERVAL=30min）
@@ -146,6 +175,77 @@ Agent 自行决定干什么（整理记忆、跑维护、清理临时文件等�
 **附加功能**：每 12 小时静默触发 L4 会话压缩（调 `memory/L4_raw_sessions/compress_session.py`），归档 `temp/model_responses/` 里的原始会话日志。
 
 **端口锁**：bind 127.0.0.1:45762 防止重复启动。
+
+---
+
+## Goal Hive — 多 worker 协作协议
+
+Goal Hive 不是新脚本，是 **Goal Mode + agent_team_worker + BBS 的组合协议**。复用同一个 `reflect/goal_mode.py` 引擎，通过配置差异实现多 agent 协作。
+
+### 架构：三层角色
+
+```
+┌──────────────┐
+│   BBS Server │  assets/agent_bbs.py — FastAPI + SQLite，纯 HTTP
+└──────┬───────┘
+       │
+┌──────┴───────┐
+│  Hive Master │  reflect/goal_mode.py（同引擎，定制 goal_state.json）
+│  只调度不干活  │  objective 里嵌入 BBS 地址 + 职责描述 + 调度指令
+└──────┬───────┘
+       │ 拆任务、派发到 BBS
+┌──────┴───────┐
+│   Workers    │  reflect/agent_team_worker.py × N（≤5个）
+│  只干活不决策  │  轮询 BBS → 抢单 → 执行 → 发帖汇报
+└──────────────┘
+```
+
+### Master 的控制论模型
+
+Goal Hive Master 用控制论建模工作流，不同于单机 Goal Mode 的 创造→检验→改进：
+
+- **J\*** = 用户真正要的价值（不变）
+- **y** = 当前产物
+- **e** = J\* − y（偏差）
+- 每轮目标 = 测 e、压 e
+
+四阶段循环，发散/收敛交替：
+
+| 阶段 | 模式 | 谁做 | 产出 |
+|---|---|---|---|
+| x.1 探测 | 发散（多 worker 并行调研） | workers | `探测报告Tx.md` |
+| x.2 设计 | 收敛（Master 独断） | Master 亲自 | `执行方案Tx.md`（含 changelog） |
+| x.3 执行 | 发散（多 worker 并行实施） | workers | 产物增量合入锚点 |
+| x.4 检查 | 发散（多视角独立挑刺） | workers | `检查报告Tx.md`（P0/P1 清单 → 下轮 changelog） |
+
+**失稳急刹**：worker 忙但 J 不升、局部多整体不可用、过程取代用户价值 → 立即停派、重对齐 J\*、砍弱任务、恢复闭环。
+
+### 与单机 Goal Mode 的对比
+
+| 维度 | Goal Mode | Goal Hive |
+|---|---|---|
+| agent 数 | 1 | 1 Master + N workers（≤5） |
+| 引擎 | `reflect/goal_mode.py` | **同一个** `reflect/goal_mode.py` |
+| 差异来源 | - | `goal_state.json` 的 objective 嵌入了 BBS 地址 + 调度职责 |
+| 工作方式 | 同一 agent 创造→检验→改进 | Master 拆/汇，workers 并行执行 |
+| 收口 | 总结进展 + 清理 | 同上 + 关闭所有 worker + BBS 宣告结束 |
+
+### 框架耦合度：Hive 比单机更通用
+
+单机 Goal Mode 的 agent 和引擎是**直接耦合**的——`check()` 返回值直接注入 GA agent 循环。Hive 在中间插了一层 BBS：
+
+```
+单机：goal_mode.py → GA agent（直接耦合）
+Hive：goal_mode.py → GA agent → BBS ← Worker（BBS 解耦）
+```
+
+| 组件 | 与 GA 耦合 | 通用性 |
+|---|---|---|
+| BBS Server | **零**。FastAPI + SQLite，纯 HTTP | 100% |
+| Hive Master | 仅 5 行 `--reflect` 协议壳 | 90%（同 goal_mode.py） |
+| Worker | 仅 5 行 `--reflect` 协议壳 | 90%（同 agent_team_worker.py） |
+
+**BBS 是关键解耦点**：workers 不需要是 GA agent——任何能发 HTTP 请求的 agent 框架（LangChain、AutoGPT 等）都能当 worker。换框架只需替换 Master/Worker 的 5 行接口适配，BBS 一行不用动。
 
 ---
 

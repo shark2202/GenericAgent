@@ -1,5 +1,5 @@
 workflow: full
-phase: build
+phase: verify
 design_doc: docs/superpowers/specs/2026-07-06-add-skill-support-design.md
 plan: docs/superpowers/plans/2026-07-06-add-skill-support.md
 base_ref: 046e5f6bc16f8dd0d955cff38782c7f47874bcf5
