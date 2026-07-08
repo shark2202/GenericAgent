@@ -12,9 +12,6 @@ if sys.platform == "win32" and sys.stdout.encoding and sys.stdout.encoding.lower
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
-if PROJECT_DIR not in sys.path:
-    sys.path.insert(0, PROJECT_DIR)
-
 
 def _frontends():
     return os.path.join(PROJECT_DIR, "frontends")
@@ -111,6 +108,11 @@ COMMANDS = {
         "help": "Manage MCP servers",
         "desc": "List, start, stop, restart MCP servers",
         "cmd": ["python", "{PROJECT_DIR}/ga_cli/mcp_cli.py"],
+    },
+    "goal": {
+        "help": "Goal lifecycle management",
+        "desc": "Propose, confirm, run, status, deliverable for goals",
+        "cmd": ["python", "{PROJECT_DIR}/ga_cli/goal_cli.py"],
     },
 }
 
