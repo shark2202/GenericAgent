@@ -37,7 +37,7 @@ impl Store {
         &self.root
     }
 
-    pub fn conn(&self) -> Result<std::sync::MutexGuard<Connection>> {
+    pub fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         self.conn.lock().map_err(|e| anyhow::anyhow!("DB lock: {}", e))
     }
 }
