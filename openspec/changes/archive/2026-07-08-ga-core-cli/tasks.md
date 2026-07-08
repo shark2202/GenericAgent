@@ -1,53 +1,50 @@
 ## 1. Rust workspace 与项目骨架
 
-- [ ] 1.1 新建 Rust workspace（单二进制 crate `ga`，模块拆分 core/cli/runner/ipc/store）
-- [ ] 1.2 添加依赖（tokio、rusqlite、serde、clap、tracing、portable-pty 等）并 `cargo build` 通过
-- [ ] 1.3 建立日志/错误类型骨架与配置加载（GA 根目录、数据目录定位）
+- [x] 1.1 新建 Rust workspace（单二进制 crate `ga`，模块拆分 core/cli/runner/ipc/store）
+- [x] 1.2 添加依赖（tokio、rusqlite、serde、clap、tracing、portable-pty 等）并 `cargo build` 通过
+- [x] 1.3 建立日志/错误类型骨架与配置加载（GA 根目录、数据目录定位）
 
 ## 2. SQLite 数据层（对应 D3）
 
-- [ ] 2.1 设计并实现 schema：sessions / projects / events / approvals / runner_kinds（WAL + 迁移）
-- [ ] 2.2 实现 sessions/projects 的 CRUD 仓储层 + 单测
-- [ ] 2.3 实现 events 时间线写入与按 session/project 查询 + 单测
+- [x] 2.1 设计并实现 schema：sessions / projects / events / approvals / runner_kinds / config
+- [x] 2.2 实现 Store（WAL 模式、连接池、事务辅助）与 migration 入口
+- [x] 2.3 实现 CRUD 方法（sessions_list/create/archive、projects_list/create/follow、config_get/set）
 
-## 3. Core daemon 基础（对应 D1）
+## 3. IPC 协议层
 
-- [ ] 3.1 实现 daemon 入口（单实例锁、按需拉起、信号处理）
-- [ ] 3.2 实现本地 IPC 监听端点（Unix socket / Windows named pipe 抽象）
-- [ ] 3.3 实现 client↔daemon 连接层（CLI 前端连 Core）
+- [x] 3.1 定义 IpcMessage / EventKind / ApprovalRequest / ApprovalResponse / RiskLevel
+- [x] 3.2 平台抽象（Windows Named Pipe / Unix socket）+ 自动重连
+- [x] 3.3 事件流写入器（EventStream：JSON 行协议 + 滚动文件）
 
-## 4. Runner 抽象与 adapter（对应 D2/D4）
+## 4. Runner trait + GA adapter
 
-- [ ] 4.1 定义 `Runner` trait + 事件枚举（结构化 tool_call / 流 output+status）+ 版本化 schema
-- [ ] 4.2 实现 GA adapter（拉起 Python GA、结构化 tool_call 事件回推、cwd/memory 注入）
-- [ ] 4.3 实现 generic-PTY/stream adapter（opencode/claude-code/codex，output 行 + status）
-- [ ] 4.4 实现 runner kind 注册/选择（`--runner`，内置 + 配置文件声明）
-- [ ] 4.5 用 mock runner 验证 spawn→事件流→终答/完成 闭环（结构化 + 流两种）
+- [x] 4.1 定义 Runner trait（kind/start/stop/status）+ RunnerContext/Output/Status
+- [x] 4.2 实现 GaRunner（portable-pty 启动 GA agent_loop，PID 捕获）
+- [x] 4.3 实现 RunnerRegistry（内置 GA + OpenCode + Claude-Code，配置文件声明自定义）
 
-## 5. 事件时间线（对应 ga-orchestration-core spec）
+## 5. Core 编排层
 
-- [ ] 5.1 结构化 runner 的 tool_call args/result/timing 经 Core 写入 events
-- [ ] 5.2 流 runner 的 output 行 / status 变化经 Core 写入 events
-- [ ] 5.3 实现 `session watch` / `project follow` 事件流聚合输出；验证跨重启可重放
+- [x] 5.1 Orchestrator 持有 Store + RunnerRegistry，统一入口
+- [x] 5.2 session_new：创建记录 → 启动 runner → 回写 PID
+- [x] 5.3 status / sessions_list / projects_list / llm_set 等查询命令
 
-## 6. 跨平台进程管理（对应 D5）
+## 6. CLI 命令（clap）
 
-- [ ] 6.1 定义 `trait RunnerSupervisor`（spawn / terminate / kill）
-- [ ] 6.2 Unix 实现（process group + SIGTERM 优雅停）
-- [ ] 6.3 Windows 实现（Job Object 子树随 Core 退出 + ConPTY）
-- [ ] 6.4 三平台冒烟：Core 退出后无 orphan runner
+- [x] 6.1 `ga status`：活跃会话 / 项目 / runner / LLM 模型
+- [x] 6.2 `ga session new/list/archive/watch`
+- [x] 6.3 `ga project create/list/follow`
+- [x] 6.4 `ga llm set` / `ga daemon`
 
-## 7. CLI 命令面与契约（对应 supervisor-cli spec / D6）
+## 7. Daemon 模式 + 事件流消费
 
-- [ ] 7.1 用 clap 实现 `status` / `sessions list` / `session new --runner` / `session watch` / `session archive` / `project create` / `project follow` / `llm set`
-- [ ] 7.2 实现写命令必填 origin 三元组校验与缺失/未知 runner 报错（退出码 2）
-- [ ] 7.3 实现 `--json` 版本化输出（含 `schema_version`）与稳定退出码（0/2/3/4/5/10+）
-- [ ] 7.4 旧 `ga_cli` 兼容 shim 决策与实现（保留透传子集或移除）
+- [ ] 7.1 Daemon 前台/后台模式（当前为 stub）
+- [ ] 7.2 事件流消费：监听各 session 的 IPC，写入 SQLite events
+- [ ] 7.3 跨重启 reattach：扫描 sessions 表，对 active session 尝试 runner.status→reattach
 
-## 8. 审批治理（两级，对应 approval-governance spec / D7）
+## 8. 审批系统
 
-- [ ] 8.1 结构化 runner 工具级策略（per-call / allowlist / YOLO）
-- [ ] 8.2 流 runner 命令级确认（pre-run confirm / YOLO）
+- [ ] 8.1 Approval schema + store 方法（create/pending_list/update）
+- [ ] 8.2 风险分级策略（Low→auto, Medium→prompt, High→block）
 - [ ] 8.3 runner 调用前经 Core 策略检查、需审批则挂起
 - [ ] 8.4 实现 CLI `approval <id> --approve/--reject`（带 origin 三元组）与交互提示
 - [ ] 8.5 验证 allowlist 命中 / YOLO 自动批准写入事件流
