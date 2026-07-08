@@ -7,6 +7,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from agent_loop import BaseHandler, StepOutcome, json_default
+from skill_loader import sync_skills_to_l1
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 def safe_print(*args, **kwargs):
@@ -600,6 +601,10 @@ class GenericAgentHandler(BaseHandler):
 def get_global_memory():
     prompt = "\n"
     try:
+        try:
+            sync_skills_to_l1()
+        except Exception:
+            pass
         suffix = '_en' if os.environ.get('GA_LANG', '') == 'en' else ''
         with open(os.path.join(script_dir, 'memory/global_mem_insight.txt'), 'r', encoding='utf-8', errors='replace') as f: insight = f.read()
         with open(os.path.join(script_dir, f'assets/insight_fixed_structure{suffix}.txt'), 'r', encoding='utf-8') as f: structure = f.read()
