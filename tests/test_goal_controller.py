@@ -365,6 +365,30 @@ class TestGoalController(unittest.TestCase):
         self.assertEqual(recovered[0].state, GoalState.RUNNING)
         store2.close()
 
+    def test_recovery_marks_stale_sessions_interrupted(self):
+        """Recover() should mark 'running' sessions as 'interrupted' since
+        their runner processes are dead after a daemon restart."""
+        goal = self.ctrl.propose(proposal="test", max_duration=600)
+        self.ctrl.run(goal.id, goal.confirm_token)
+        self.ctrl.spawn_runner(goal.id)
+
+        # Verify session is running
+        sessions_before = self.store.get_sessions(goal.id)
+        self.assertEqual(len(sessions_before), 1)
+        self.assertEqual(sessions_before[0]['status'], 'running')
+
+        # Simulate restart: create new controller with same DB
+        self.store.close()
+        store2 = GoalStore(self.tmp.name)
+        ctrl2 = GoalController(store2)
+
+        # Recovery should mark stale session as interrupted
+        ctrl2.recover()
+        sessions_after = store2.get_sessions(goal.id)
+        self.assertEqual(len(sessions_after), 1)
+        self.assertEqual(sessions_after[0]['status'], 'interrupted')
+        store2.close()
+
     # ── Scenario: Timeout fires automatically ──
 
     def test_timeout_fires(self):

@@ -534,7 +534,12 @@ class GoalController:
     # ── Recovery ──
 
     def recover(self) -> List[Goal]:
-        """Recover running and paused goals after a restart. Re-applies timeout timers for running goals."""
+        """Recover running and paused goals after a restart.
+
+        Re-applies timeout timers for running goals.
+        Marks stale 'running' sessions as 'interrupted' since their
+        runner processes are likely dead after a restart.
+        """
         recovered = []
         # Recover running goals - re-apply timeout timers
         for goal in self.store.get_running_goals():
@@ -547,10 +552,26 @@ class GoalController:
                     continue
                 else:
                     self._start_timeout_timer(goal.id, remaining)
+            # Mark stale running sessions as interrupted
+            sessions = self.store.get_sessions(goal.id)
+            for s in sessions:
+                if s.get('status') == 'running':
+                    self.store.update_session(goal.id, s['session_id'],
+                                              'interrupted')
+                    log.info(f"Marked stale session {s['session_id']} "
+                             f"as interrupted during recovery")
             recovered.append(goal)
             log.info(f"Recovered running goal: {goal.id}")
         # Recover paused goals - no timer needed, they stay paused
         for goal in self.store.get_paused_goals():
+            # Mark stale running sessions for paused goals too
+            sessions = self.store.get_sessions(goal.id)
+            for s in sessions:
+                if s.get('status') == 'running':
+                    self.store.update_session(goal.id, s['session_id'],
+                                              'interrupted')
+                    log.info(f"Marked stale session {s['session_id']} "
+                             f"as interrupted during recovery (paused goal)")
             recovered.append(goal)
             log.info(f"Recovered paused goal: {goal.id}")
         return recovered
