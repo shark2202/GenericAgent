@@ -13,6 +13,10 @@ try:
     from plugins.hooks import discover_and_load; discover_and_load()
 except Exception: pass
 from ga import GenericAgentHandler, smart_format, get_global_memory, format_error, consume_file
+try:
+    from mcp_client import MCPClientManager
+except Exception:
+    MCPClientManager = None
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 BANNED_TOOLS = (['ask_user', 'start_long_term_update'] if '--no-user-tools' in sys.argv else [])
@@ -66,6 +70,15 @@ class GenericAgent:
         self.load_llm_sessions()
         self.extra_sys_prompts = []
         self.intervene = self.extrakeyinfo = None
+        # MCP Client init
+        self.mcp_manager = None
+        if MCPClientManager is not None:
+            try:
+                self.mcp_manager = MCPClientManager(script_dir)
+                self.mcp_manager.start()
+            except Exception as e:
+                print(f"[WARN] MCP Client init failed: {e}")
+                self.mcp_manager = None
 
     def load_llm_sessions(self):
         mykeys, changed = reload_mykeys()
@@ -116,6 +129,12 @@ class GenericAgent:
         self.stop_sig = True
         if self.handler is not None: self.handler.code_stop_signal.append(1)
             
+    def shutdown(self):
+        """Cleanup resources: stop MCP servers, etc."""
+        if getattr(self, 'mcp_manager', None):
+            try: self.mcp_manager.stop()
+            except Exception as e: print(f"[WARN] MCP shutdown error: {e}")
+
     def put_task(self, query, source="user", images=None):
         display_queue = queue.Queue()
         self.task_queue.put({"query": query, "source": source, "images": images or [], "output": display_queue})
@@ -155,6 +174,7 @@ class GenericAgent:
             sys_prompt = get_system_prompt() + '\n'.join(self.extra_sys_prompts) + getattr(self.llmclient.backend, 'extra_sys_prompt', '')
             if self.peer_hint: sys_prompt += f"\n[Peer] 用户提及其他会话/后台任务状态时: temp/model_responses/ (只找近期修改的文件尾部)\n"
             handler = GenericAgentHandler(self, self.history, os.path.join(script_dir, 'temp'))
+            handler._mcp_manager = getattr(self, 'mcp_manager', None)
             if getattr(self, 'no_print', False): handler.print = lambda *a, **k: None
             if self.handler and 'key_info' in self.handler.working: 
                 ki = re.sub(r'\n\[SYSTEM\] 此为.*?工作记忆[。\n]*', '', self.handler.working['key_info'])  # 去旧
@@ -193,6 +213,8 @@ class GenericAgent:
                 self.is_running = self.stop_sig = False
                 self.task_queue.task_done()
                 if self.handler is not None: self.handler.code_stop_signal.append(1)
+        # MCP Client cleanup on shutdown
+        self.shutdown()
 
 GeneraticAgent = GenericAgent
 

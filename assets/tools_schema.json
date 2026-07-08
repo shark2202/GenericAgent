@@ -69,5 +69,13 @@
     "name": "start_long_term_update",
     "description": "Start distilling long-term memory. Call when discovering info worth remembering (env facts/user prefs/lessons learned). Skip if memory already updated or in autonomous flow. Must call when a task that took 15+ turns is completed",
     "parameters": {"type": "object", "properties": {}}}
+  },
+  {"type": "function", "function": {
+    "name": "mcp_call",
+    "description": "Call a tool on a connected MCP (Model Context Protocol) Server. Use get_system_prompt's MCP section to discover available servers and tools.",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "MCP Server name (from the [MCP] section in system prompt)"},
+      "tool": {"type": "string", "description": "Tool name to call on that server"},
+      "arguments": {"type": "object", "description": "Arguments dict for the tool", "default": {}}}, "required": ["server", "tool"]}}
   }
 ]

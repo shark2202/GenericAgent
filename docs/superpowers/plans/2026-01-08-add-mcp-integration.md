@@ -99,11 +99,11 @@ base-ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
 
 ## 验收标准
 
-- [ ] 所有 pytest 测试通过
-- [ ] `mcp` 包安装成功
-- [ ] `ga mcp list` 命令可用
-- [ ] 配置 stdio Server → mcp_call 调用成功
-- [ ] 热更新：改配置文件 → 工具列表刷新
-- [ ] 故障重连：kill Server → 自动恢复
-- [ ] 审计日志可查
-- [ ] system prompt 包含 MCP 工具列表
+- [x] 所有 pytest 测试通过
+- [x] `mcp` 包安装成功
+- [x] `ga mcp list` 命令可用
+- [x] 配置 stdio Server → mcp_call 调用成功
+- [x] 热更新：改配置文件 → 工具列表刷新
+- [x] 故障重连：kill Server → 自动恢复
+- [x] 审计日志可查
+- [x] system prompt 包含 MCP 工具列表

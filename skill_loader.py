@@ -75,11 +75,31 @@ def get_skill_catalog(cwd_skills_root=None):
 
     catalog.update(_scan_dir(project_root))
 
-    if not catalog:
-        return ""
+    # Build skill catalog lines
+    lines = []
+    if catalog:
+        lines.append("## Available Skills")
+        lines.append("")
+        for name, (desc, path) in sorted(catalog.items()):
+            lines.append(f"- **{name}**: {desc} ({path})")
 
-    lines = ["## Available Skills", ""]
-    for name, (desc, path) in sorted(catalog.items()):
-        lines.append(f"- **{name}**: {desc} ({path})")
+    # Append MCP tools if available (parallel to skill index in system prompt).
+    # MCPClientManager is initialized in agentmain.py and exposed via a singleton
+    # get_instance() classmethod, so system-prompt injection works without a live
+    # agent reference. All MCP imports are guarded so GA runs without mcp installed.
+    try:
+        from mcp_client import MCPClientManager
+        mgr = MCPClientManager.get_instance()
+        if mgr:
+            mcp_summary = mgr.get_tools_summary()
+            if mcp_summary:
+                if lines:
+                    lines.append("")  # blank separator between sections
+                lines.append(mcp_summary)
+    except Exception:
+        pass  # MCP not available, silently skip
+
+    if not lines:
+        return ""
 
     return "\n".join(lines) + "\n"
