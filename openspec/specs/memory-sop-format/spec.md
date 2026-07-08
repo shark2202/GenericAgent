@@ -1,5 +1,8 @@
-## ADDED Requirements
+# memory-sop-format Specification
 
+## Purpose
+TBD - created by archiving change okf-memory-sop-normalize. Update Purpose after archive.
+## Requirements
 ### Requirement: SOP 文档 SHALL 有 OKF 合规 frontmatter
 
 `memory/` 目录下每个非保留 `.md` 文件（不含 `index.md`、`log.md`）MUST 在文件顶部包含可解析的 YAML frontmatter 块，且 frontmatter 中 MUST 包含非空 `type` 字段。这满足 OKF v0.1 合规要求。
@@ -62,7 +65,7 @@ consumer MUST 容忍 broken link（目标不存在的链接不视为错误，代
 
 ### Requirement: memory/ SHALL 包含 log.md 更新历史
 
-`memory/log.md` SHOULD 存在，记录目录级更新历史。格式为日期分组条目列表（newest first），日期标题使用 ISO 8601 `YYYY-MM-DD` 格式。条目前导粗体词（`**Update**`/`**Creation**`/`**Deprecation**`）是约定非要求。
+`memory/log.md` MUST 存在，记录目录级更新历史。格式为日期分组条目列表（newest first），日期标题使用 ISO 8601 `YYYY-MM-DD` 格式。条目前导粗体词（`**Update**`/`**Creation**`/`**Deprecation**`）是约定非要求。
 
 #### Scenario: 追踪 OKF 迁移
 
@@ -86,3 +89,4 @@ consumer MUST 容忍 broken link（目标不存在的链接不视为错误，代
 
 - **WHEN** agent 启动并加载 memory
 - **THEN** 仍通过 L1 → L2 → L3 按需 `file_read` 机制发现和加载 SOP，代码无变更
+
