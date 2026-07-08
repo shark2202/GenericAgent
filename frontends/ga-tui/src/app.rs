@@ -204,6 +204,7 @@ impl App {
                     "ga" => RunnerKind::Ga,
                     "codex" => RunnerKind::Codex,
                     "claude" => RunnerKind::Claude,
+                    "subprocess" => RunnerKind::Subprocess,
                     other => RunnerKind::Custom(other.to_string()),
                 };
                 let pane = Pane::new(self.panes.len(), session_id, kind, self.config.scrollback);
@@ -259,6 +260,19 @@ impl App {
         self.active_pane = self.panes.len() - 1;
     }
 
+    /// Create a new subprocess runner pane
+    fn new_subprocess_session(&mut self) {
+        let session_id = format!("s{}", self.panes.len());
+        let pane = Pane::new(
+            self.panes.len(),
+            session_id.clone(),
+            RunnerKind::Subprocess,
+            self.config.scrollback,
+        );
+        self.panes.push(pane);
+        self.active_pane = self.panes.len() - 1;
+    }
+
     fn detach_session(&mut self) {
         if let Some(pane) = self.panes.get_mut(self.active_pane) {
             pane.status = PaneStatus::Detached;
@@ -290,10 +304,53 @@ impl App {
             "q" | "quit" => self.should_quit = true,
             "help" => self.show_help = true,
             "theme" => self.theme = self.theme.cycle(),
+            "sub" | "subprocess" => self.new_subprocess_session(),
             _ => {
                 self.last_error = Some(format!("Unknown command: {}", cmd));
             }
         }
         self.command_text.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_app() -> App {
+        App::new(Config::default())
+    }
+
+    #[test]
+    fn test_sub_command_creates_subprocess_pane() {
+        let mut app = make_app();
+        assert!(app.panes.is_empty());
+        app.command_text = "sub".to_string();
+        app.execute_command();
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.panes[0].runner, RunnerKind::Subprocess);
+        assert_eq!(app.active_pane, 0);
+    }
+
+    #[test]
+    fn test_subprocess_alias_works() {
+        let mut app = make_app();
+        app.command_text = "subprocess".to_string();
+        app.execute_command();
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.panes[0].runner, RunnerKind::Subprocess);
+    }
+
+    #[test]
+    fn test_ipc_session_new_subprocess() {
+        let mut app = make_app();
+        let msg = IpcMessage::SessionNew {
+            session_id: "sub-1".into(),
+            runner: "subprocess".into(),
+        };
+        app.handle_ipc(msg);
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.panes[0].runner, RunnerKind::Subprocess);
+        assert_eq!(app.panes[0].session_id, "sub-1");
     }
 }

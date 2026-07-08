@@ -127,3 +127,49 @@ impl Theme {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_catppuccin_mocha() {
+        let theme = Theme::default();
+        assert_eq!(theme.name, "catppuccin-mocha");
+    }
+
+    #[test]
+    fn by_name_known_themes() {
+        let t = Theme::by_name("catppuccin-mocha");
+        assert_eq!(t.name, "catppuccin-mocha");
+        let t = Theme::by_name("tokyo-night");
+        assert_eq!(t.name, "tokyo-night");
+    }
+
+    #[test]
+    fn by_name_unknown_falls_back_to_default() {
+        let t = Theme::by_name("nonexistent");
+        assert_eq!(t.name, "catppuccin-mocha");
+    }
+
+    #[test]
+    fn cycle_mocha_to_tokyo() {
+        let t = Theme::catppuccin_mocha();
+        let next = t.cycle();
+        assert_eq!(next.name, "tokyo-night");
+    }
+
+    #[test]
+    fn cycle_tokyo_to_mocha() {
+        let t = Theme::tokyo_night();
+        let next = t.cycle();
+        assert_eq!(next.name, "catppuccin-mocha");
+    }
+
+    #[test]
+    fn themes_have_distinct_bg() {
+        let m = Theme::catppuccin_mocha();
+        let t = Theme::tokyo_night();
+        assert_ne!(m.bg, t.bg);
+    }
+}
