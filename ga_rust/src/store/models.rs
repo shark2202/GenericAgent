@@ -414,4 +414,140 @@ impl Store {
             resolver_origin: resolver_str.and_then(|s| Origin::from_str(&s)),
         })
     }
+
+    // === Goal methods ===
+
+    pub fn goal_create(&self, title: &str, description: Option<&str>, priority: i64,
+        max_runners: Option<i64>, initial_state: &str) -> Result<crate::core::Goal> {
+        let now = Utc::now().to_rfc3339();
+        let id = Uuid::new_v4().to_string();
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO goals (id, title, description, state, priority, max_runners, deliverable, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,?7)",
+            rusqlite::params![id, title, description, initial_state, priority, max_runners, now],
+        )?;
+        Ok(crate::core::Goal {
+            id,
+            title: title.to_string(),
+            description: description.map(String::from),
+            state: crate::core::GoalState::from_str(initial_state)
+                .unwrap_or(crate::core::GoalState::Proposed),
+            priority,
+            max_runners,
+            deliverable: None,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    pub fn goal_get(&self, id: &str) -> Result<crate::core::Goal> {
+        let conn = self.conn()?;
+        conn.query_row(
+            "SELECT id, title, description, state, priority, max_runners, deliverable, created_at, updated_at FROM goals WHERE id=?1",
+            rusqlite::params![id],
+            |row| {
+                let state_str: String = row.get(3)?;
+                Ok(crate::core::Goal {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    description: row.get(2)?,
+                    state: crate::core::GoalState::from_str(&state_str)
+                        .unwrap_or(crate::core::GoalState::Proposed),
+                    priority: row.get(4)?,
+                    max_runners: row.get(5)?,
+                    deliverable: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            },
+        ).map_err(Into::into)
+    }
+
+    pub fn goal_list(&self) -> Result<Vec<crate::core::Goal>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, state, priority, max_runners, deliverable, created_at, updated_at FROM goals ORDER BY priority DESC, created_at ASC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let state_str: String = row.get(3)?;
+            Ok(crate::core::Goal {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                state: crate::core::GoalState::from_str(&state_str)
+                    .unwrap_or(crate::core::GoalState::Proposed),
+                priority: row.get(4)?,
+                max_runners: row.get(5)?,
+                deliverable: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn goal_set_state(&self, id: &str, state: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        let affected = conn.execute(
+            "UPDATE goals SET state=?1, updated_at=?2 WHERE id=?3",
+            rusqlite::params![state, now, id],
+        )?;
+        if affected == 0 {
+            anyhow::bail!("Goal {} not found", id);
+        }
+        Ok(())
+    }
+
+    // === SubGoal methods ===
+
+    pub fn subgoal_create(&self, goal_id: &str, title: &str, session_id: Option<&str>) -> Result<crate::core::SubGoal> {
+        let now = Utc::now().to_rfc3339();
+        let id = Uuid::new_v4().to_string();
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO subgoals (id, goal_id, session_id, title, status, created_at) VALUES (?1,?2,?3,?4,'pending',?5)",
+            rusqlite::params![id, goal_id, session_id, title, now],
+        )?;
+        Ok(crate::core::SubGoal {
+            id,
+            goal_id: goal_id.to_string(),
+            session_id: session_id.map(String::from),
+            title: title.to_string(),
+            status: crate::core::SubGoalStatus::Pending,
+            created_at: now,
+        })
+    }
+
+    pub fn subgoal_list(&self, goal_id: &str) -> Result<Vec<crate::core::SubGoal>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, goal_id, session_id, title, status, created_at FROM subgoals WHERE goal_id=?1 ORDER BY created_at"
+        )?;
+        let subgoals = stmt.query_map(rusqlite::params![goal_id], |row| {
+            let status_str: String = row.get(4)?;
+            Ok(crate::core::SubGoal {
+                id: row.get(0)?,
+                goal_id: row.get(1)?,
+                session_id: row.get(2)?,
+                title: row.get(3)?,
+                status: crate::core::SubGoalStatus::from_str(&status_str)
+                    .unwrap_or(crate::core::SubGoalStatus::Pending),
+                created_at: row.get(5)?,
+            })
+        })?;
+        subgoals.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn subgoal_set_status(&self, id: &str, status: &str) -> Result<()> {
+        let conn = self.conn()?;
+        let affected = conn.execute(
+            "UPDATE subgoals SET status=?1 WHERE id=?2",
+            rusqlite::params![status, id],
+        )?;
+        if affected == 0 {
+            anyhow::bail!("SubGoal {} not found", id);
+        }
+        Ok(())
+    }
 }

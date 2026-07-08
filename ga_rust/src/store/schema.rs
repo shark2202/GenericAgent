@@ -66,6 +66,27 @@ impl<'a> Schema<'a> {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS goals (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT,
+                state TEXT NOT NULL DEFAULT 'proposed',
+                priority INTEGER NOT NULL DEFAULT 5,
+                max_runners INTEGER,
+                deliverable TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS subgoals (
+                id TEXT PRIMARY KEY,
+                goal_id TEXT NOT NULL REFERENCES goals(id),
+                session_id TEXT REFERENCES sessions(id),
+                title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL
+            );
             "
         )?;
         Ok(())

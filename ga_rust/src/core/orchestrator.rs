@@ -253,6 +253,105 @@ impl Orchestrator {
         &self.store
     }
 
+    // === Goal methods ===
+
+    pub fn goal_propose(&self, title: &str, description: Option<&str>, priority: u32,
+        budget: Option<u32>, timeout: Option<u32>) -> Result<String> {
+        let goal = self.store.goal_create(title, description, priority as i64, None, "proposed")?;
+        // Store budget/timeout as config if provided
+        if let Some(b) = budget {
+            let _ = self.store.config_set(&format!("goal_{}_budget", goal.id), &b.to_string());
+        }
+        if let Some(t) = timeout {
+            let _ = self.store.config_set(&format!("goal_{}_timeout", goal.id), &t.to_string());
+        }
+        Ok(format!("Goal proposed: {} ({}) [proposed]", goal.id, goal.title))
+    }
+
+    pub fn goal_confirm(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        crate::core::GoalController::validate_transition(&goal.state, &crate::core::GoalState::Confirmed)?;
+        self.store.goal_set_state(id, "confirmed")?;
+        Ok(format!("Goal {} confirmed.", id))
+    }
+
+    pub fn goal_run(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        crate::core::GoalController::validate_transition(&goal.state, &crate::core::GoalState::Running)?;
+        self.store.goal_set_state(id, "running")?;
+        Ok(format!("Goal {} running.", id))
+    }
+
+    pub fn goal_list(&self) -> Result<String> {
+        let goals = self.store.goal_list()?;
+        if goals.is_empty() {
+            return Ok("No goals.".to_string());
+        }
+        let mut out = String::new();
+        for g in &goals {
+            out.push_str(&format!("{} | {} | {} | pri={} | {}\n",
+                g.id, g.state.as_str(), g.title, g.priority,
+                g.description.as_deref().unwrap_or("-")));
+        }
+        Ok(out)
+    }
+
+    pub fn goal_show(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        let subgoals = self.store.subgoal_list(id)?;
+        let mut out = format!(
+            "Goal: {} ({})\n  State: {}\n  Priority: {}\n  Max runners: {}\n  Description: {}\n  Created: {}\n  Updated: {}\n",
+            goal.title, goal.id,
+            goal.state.as_str(), goal.priority,
+            goal.max_runners.map(|m| m.to_string()).unwrap_or("∞".to_string()),
+            goal.description.as_deref().unwrap_or("-"),
+            goal.created_at, goal.updated_at,
+        );
+        if !subgoals.is_empty() {
+            out.push_str("  SubGoals:\n");
+            for sg in &subgoals {
+                out.push_str(&format!("    {} | {} | {} | session={}\n",
+                    sg.id, sg.status.as_str(), sg.title,
+                    sg.session_id.as_deref().unwrap_or("-")));
+            }
+        } else {
+            out.push_str("  SubGoals: none\n");
+        }
+        Ok(out)
+    }
+
+    pub fn goal_done(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        crate::core::GoalController::validate_transition(&goal.state, &crate::core::GoalState::Done)?;
+        self.store.goal_set_state(id, "done")?;
+        Ok(format!("Goal {} done.", id))
+    }
+
+    pub fn goal_fail(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        crate::core::GoalController::validate_transition(&goal.state, &crate::core::GoalState::Failed)?;
+        self.store.goal_set_state(id, "failed")?;
+        Ok(format!("Goal {} failed.", id))
+    }
+
+    pub fn goal_deliverable(&self, id: &str) -> Result<String> {
+        let goal = self.store.goal_get(id)?;
+        match goal.deliverable {
+            Some(d) => Ok(d),
+            None => Ok("No deliverable recorded.".to_string()),
+        }
+    }
+
+    pub fn goal_add_subgoal(&self, goal_id: &str, title: &str) -> Result<String> {
+        let sg = self.store.subgoal_create(goal_id, title, None)?;
+        Ok(format!("SubGoal added: {} ({}) to goal {}", sg.id, sg.title, goal_id))
+    }
+
+    pub fn goal_complete_subgoal(&self, subgoal_id: &str) -> Result<String> {
+        self.store.subgoal_set_status(subgoal_id, "done")?;
+        Ok(format!("SubGoal {} marked done.", subgoal_id))
+    }
+
     /// Expose registry for daemon module
     pub fn registry(&self) -> &RunnerRegistry {
         &self.registry

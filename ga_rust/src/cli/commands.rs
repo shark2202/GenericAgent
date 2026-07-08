@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 
 use crate::core::Orchestrator;
 use crate::core::Daemon;
+use crate::core::GoalState;
 use crate::store::Origin;
 
 /// GenericAgent Core Daemon + CLI
@@ -56,6 +57,12 @@ pub enum Commands {
     /// Approval management
     #[command(subcommand)]
     Approval(ApprovalCommands),
+    /// Goal lifecycle management
+    #[command(subcommand)]
+    Goal(GoalCommands),
+    /// Goals (alias for goal)
+    #[command(subcommand)]
+    Goals(GoalCommands),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -160,6 +167,59 @@ pub enum ApprovalCommands {
         /// Show current allowlist
         #[arg(long, conflicts_with = "set")]
         show: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GoalCommands {
+    /// List all goals
+    List,
+    /// Propose a new goal
+    Propose {
+        /// Goal title
+        title: String,
+        /// Goal description
+        #[arg(long)]
+        description: Option<String>,
+        /// Priority (1-10, default 5)
+        #[arg(long, default_value_t = 5)]
+        priority: u32,
+        /// Budget max (turn limit)
+        #[arg(long)]
+        budget: Option<u32>,
+        /// Timeout in seconds
+        #[arg(long)]
+        timeout: Option<u32>,
+    },
+    /// Confirm a proposed goal
+    Confirm {
+        /// Goal ID
+        id: String,
+    },
+    /// Start running a confirmed goal
+    Run {
+        /// Goal ID
+        id: String,
+    },
+    /// Mark a running goal as done
+    Done {
+        /// Goal ID
+        id: String,
+    },
+    /// Mark a running goal as failed
+    Fail {
+        /// Goal ID
+        id: String,
+    },
+    /// Show goal details
+    Show {
+        /// Goal ID
+        id: String,
+    },
+    /// Show goal deliverable
+    Deliverable {
+        /// Goal ID
+        id: String,
     },
 }
 
@@ -280,6 +340,46 @@ impl Cli {
                     } else {
                         println!("Usage: --set <tools> or --show");
                     }
+                }
+            },
+            Commands::Goal(cmd) | Commands::Goals(cmd) => match cmd {
+                GoalCommands::List => {
+                    let output = core.goal_list()?;
+                    println!("{}", output);
+                }
+                GoalCommands::Propose { title, description, priority, budget, timeout } => {
+                    let output = core.goal_propose(
+                        &title,
+                        description.as_deref(),
+                        priority,
+                        budget,
+                        timeout,
+                    )?;
+                    println!("{}", output);
+                }
+                GoalCommands::Confirm { id } => {
+                    let output = core.goal_confirm(&id)?;
+                    println!("{}", output);
+                }
+                GoalCommands::Run { id } => {
+                    let output = core.goal_run(&id)?;
+                    println!("{}", output);
+                }
+                GoalCommands::Done { id } => {
+                    let output = core.goal_done(&id)?;
+                    println!("{}", output);
+                }
+                GoalCommands::Fail { id } => {
+                    let output = core.goal_fail(&id)?;
+                    println!("{}", output);
+                }
+                GoalCommands::Show { id } => {
+                    let output = core.goal_show(&id)?;
+                    println!("{}", output);
+                }
+                GoalCommands::Deliverable { id } => {
+                    let output = core.goal_deliverable(&id)?;
+                    println!("{}", output);
                 }
             },
         };
