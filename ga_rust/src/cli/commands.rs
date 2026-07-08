@@ -231,7 +231,9 @@ pub enum GoalCommands {
 
 impl Cli {
     pub fn execute(&self) -> Result<()> {
-        let root = self.root.clone().unwrap_or_else(|| ".".to_string());
+        let root = self.root.clone().unwrap_or_else(|| {
+            std::env::var("GA_ROOT").unwrap_or_else(|_| ".".to_string())
+        });
 
         // Internal flag: spawned daemon process runs in foreground
         if self.daemon_fg {
