@@ -5,6 +5,7 @@
 pub mod app;
 pub mod approval;
 pub mod config;
+pub mod daemon_compat;
 pub mod event;
 pub mod ipc;
 pub mod pane;
