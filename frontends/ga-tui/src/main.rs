@@ -62,17 +62,26 @@ async fn main() -> anyhow::Result<()> {
     // Create app
     let mut app = App::new(config.clone());
 
-    // P0: Wire up IPC client
+    // P0: Wire up IPC backend (Core streaming or Daemon request-response)
     let (ipc_tx, mut ipc_rx) = mpsc::channel::<ga_tui::event::IpcMessage>(100);
     let socket_path = std::path::PathBuf::from(&config.socket_path);
-    let ipc_client = IpcClient::new(socket_path, ipc_tx);
 
-    // Spawn IPC reader task (connects to daemon, forwards IpcMessage)
-    if let Err(e) = ipc_client.start_reader() {
-        tracing::warn!("Failed to start IPC reader: {e}");
+    let ipc_backend = if config.daemon_mode {
+        // Daemon mode: use DaemonCompatBridge (polling adapter for ga_rust daemon)
+        let bridge = DaemonCompatBridge::new(socket_path, ipc_tx);
+        let arc_bridge = bridge.start();
+        tracing::info!("DaemonCompatBridge started (daemon_mode=true)");
+        IpcBackend::Daemon(arc_bridge)
     } else {
-        tracing::info!("IPC reader started, connecting to {}", config.socket_path);
-    }
+        // Core mode: use streaming IpcClient (ga-core-cli)
+        let client = IpcClient::new(socket_path, ipc_tx);
+        if let Err(e) = client.start_reader() {
+            tracing::warn!("Failed to start IPC reader: {e}");
+        } else {
+            tracing::info!("IPC reader started, connecting to {}", config.socket_path);
+        }
+        IpcBackend::Core(client)
+    };
 
     // Spawn bridge task: IpcMessage → AppEvent::Ipc
     let event_tx = tx.clone();
