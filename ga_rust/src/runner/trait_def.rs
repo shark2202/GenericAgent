@@ -7,6 +7,8 @@ pub struct RunnerContext {
     pub session_id: String,
     pub project_path: Option<String>,
     pub env: Vec<(String, String)>,
+    /// Command to run (used by subprocess runner)
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

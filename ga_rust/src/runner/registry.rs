@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use super::trait_def::Runner;
 use super::ga_adapter::GaRunner;
+use super::subprocess_adapter::SubprocessRunner;
 
 pub struct RunnerRegistry {
     runners: HashMap<String, Arc<dyn Runner>>,
@@ -17,6 +18,10 @@ impl RunnerRegistry {
         // Register built-in runners
         let ga_runner = Arc::new(GaRunner::new(ga_root));
         runners.insert("ga".to_string(), ga_runner);
+
+        // Subprocess runner — agent-agnostic, spawns any CLI command
+        let subprocess_runner = Arc::new(SubprocessRunner::from_command(""));
+        runners.insert("subprocess".to_string(), subprocess_runner);
 
         Self { runners }
     }

@@ -48,12 +48,16 @@ pub enum SessionCommands {
     List,
     /// Create a new session
     New {
-        /// Runner kind (ga, opencode, claude-code, codex)
+        /// Runner kind (ga, opencode, claude-code, codex, subprocess)
         #[arg(long, default_value = "ga")]
         runner: String,
         /// Project to associate
         #[arg(long)]
         project: Option<String>,
+        /// Command for subprocess runner (e.g. "python -i" or "bash")
+        /// Only used when --runner=subprocess
+        #[arg(long)]
+        command: Option<String>,
     },
     /// Watch a session's output
     Watch {
@@ -109,7 +113,7 @@ impl Cli {
             Commands::Status => core.status(),
             Commands::Sessions(cmd) | Commands::Session(cmd) => match cmd {
                 SessionCommands::List => core.sessions_list(),
-                SessionCommands::New { runner, project } => core.session_new(&runner, project.as_deref()),
+                SessionCommands::New { runner, project, command } => core.session_new(&runner, project.as_deref(), command.as_deref()),
                 SessionCommands::Watch { session_id } => core.session_watch(&session_id),
                 SessionCommands::Archive { session_id } => core.session_archive(&session_id),
             },

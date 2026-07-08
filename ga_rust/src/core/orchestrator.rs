@@ -38,7 +38,7 @@ impl Orchestrator {
     }
 
     // === Sessions ===
-    pub fn session_new(&self, runner: &str, project: Option<&str>) -> Result<String> {
+    pub fn session_new(&self, runner: &str, project: Option<&str>, command: Option<&str>) -> Result<String> {
         let session = self.store.session_create(runner, project)?;
 
         // Start the runner
@@ -47,6 +47,7 @@ impl Orchestrator {
             session_id: session.id.clone(),
             project_path: project.map(String::from),
             env: vec![],
+            command: command.map(String::from),
         };
 
         let rt = tokio::runtime::Runtime::new()?;

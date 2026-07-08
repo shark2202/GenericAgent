@@ -97,6 +97,36 @@ impl Store {
         Ok(())
     }
 
+    pub fn session_update_status(&self, session_id: &str, status: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE sessions SET status=?1, updated_at=?2 WHERE id=?3",
+            rusqlite::params![status, now, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn session_set_pid(&self, session_id: &str, pid: i64) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE sessions SET pid=?1, updated_at=?2 WHERE id=?3",
+            rusqlite::params![pid, now, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn session_set_exit_code(&self, session_id: &str, code: i64) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE sessions SET exit_code=?1, updated_at=?2 WHERE id=?3",
+            rusqlite::params![code, now, session_id],
+        )?;
+        Ok(())
+    }
+
     pub fn project_create(&self, name: &str, path: Option<&str>) -> Result<Project> {
         let now = Utc::now().to_rfc3339();
         let id = Uuid::new_v4().to_string();

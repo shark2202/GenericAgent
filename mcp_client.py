@@ -22,6 +22,152 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 # ---------------------------------------------------------------------------
+# Windows stdio workaround — MCP SDK's anyio-based stdio_client hangs on Win32
+# ---------------------------------------------------------------------------
+import subprocess as _subprocess
+import json as _json
+
+class _WindowsStdioMCPClient:
+    """Raw JSON-RPC MCP client over subprocess stdin/stdout (Windows-safe)."""
+
+    def __init__(self, command: str, args: list = None, env: dict = None, timeout: float = 30.0):
+        self.command = command
+        self.args = args or []
+        self.env = env
+        self.timeout = timeout
+        self._proc = None
+        self._next_id = 1
+        self._lock = threading.Lock()
+        self._tools = []
+        self._connected = False
+
+    def connect(self) -> bool:
+        try:
+            env = dict(os.environ)
+            if self.env:
+                env.update(self.env)
+            self._proc = _subprocess.Popen(
+                [self.command] + self.args,
+                stdin=_subprocess.PIPE, stdout=_subprocess.PIPE, stderr=_subprocess.PIPE,
+                env=env, bufsize=0,
+            )
+            result = self._send_request("initialize", {
+                "protocolVersion": "2024-11-05", "capabilities": {},
+                "clientInfo": {"name": "ga-win-mcp", "version": "1.0.0"},
+            })
+            self._send_notification("initialized", {})
+            tools_result = self._send_request("tools/list", {})
+            self._tools = tools_result.get("tools", [])
+            self._connected = True
+            return True
+        except Exception:
+            self._cleanup()
+            return False
+
+    @property
+    def connected(self):
+        return self._connected and self._proc and self._proc.poll() is None
+
+    def call_tool(self, name: str, arguments: dict = None):
+        if not self.connected:
+            raise RuntimeError("Not connected")
+        return self._send_request("tools/call", {"name": name, "arguments": arguments or {}})
+
+    def disconnect(self):
+        if self._connected:
+            try:
+                self._send_notification("notifications/cancelled", {})
+            except Exception:
+                pass
+        self._cleanup()
+        self._connected = False
+
+    # -- internal --
+    def _send_request(self, method, params):
+        with self._lock:
+            mid = self._next_id; self._next_id += 1
+        self._write_json({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
+        deadline = time.time() + self.timeout
+        while time.time() < deadline:
+            line = self._read_line()
+            if line is None:
+                raise RuntimeError("Server closed stdout")
+            try:
+                resp = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            if resp.get("id") == mid:
+                if "error" in resp:
+                    raise RuntimeError(f"MCP error: {resp['error']}")
+                return resp.get("result", {})
+        raise TimeoutError(f"Timeout waiting for {method}")
+
+    def _send_notification(self, method, params):
+        self._write_json({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def _write_json(self, obj):
+        data = _json.dumps(obj, separators=(',', ':')) + '\n'
+        self._proc.stdin.write(data.encode('utf-8'))
+        self._proc.stdin.flush()
+
+    def _read_line(self):
+        line = self._proc.stdout.readline()
+        return line.decode('utf-8').strip() if line else None
+
+    def _cleanup(self):
+        if self._proc:
+            try: self._proc.stdin.close()
+            except Exception: pass
+            try: self._proc.terminate(); self._proc.wait(timeout=5)
+            except Exception:
+                try: self._proc.kill()
+                except Exception: pass
+            self._proc = None
+
+
+class _WindowsSessionAdapter:
+    """Adapts _WindowsStdioMCPClient to the async ClientSession interface
+    used by MCPServerConnection (_refresh_tools, _call_tool, _ping, _shutdown)."""
+
+    def __init__(self, client: _WindowsStdioMCPClient):
+        self._client = client
+
+    async def list_tools(self):
+        from dataclasses import dataclass
+        @dataclass
+        class _Tool:
+            name: str; description: str; inputSchema: dict
+        @dataclass
+        class _Result:
+            tools: list
+        tools = [
+            _Tool(name=t["name"], description=t.get("description", ""),
+                  inputSchema=t.get("inputSchema", {"type": "object", "properties": {}}))
+            for t in self._client._tools
+        ]
+        return _Result(tools=tools)
+
+    async def call_tool(self, name: str, arguments: dict):
+        raw = self._client.call_tool(name, arguments)
+        @dataclass
+        class _Content:
+            text: str
+        @dataclass
+        class _Result:
+            content: list; is_error: bool
+        content = []
+        for item in (raw.get("content") or []):
+            if isinstance(item, dict) and "text" in item:
+                content.append(_Content(text=item["text"]))
+            else:
+                content.append(_Content(text=str(item)))
+        return _Result(content=content, is_error=raw.get("isError", False))
+
+    async def __aexit__(self, *args):
+        self._client.disconnect()
+
+
+# ---------------------------------------------------------------------------
 # AuditLogger
 # ---------------------------------------------------------------------------
 class AuditLogger:
@@ -167,6 +313,23 @@ class MCPServerConnection:
             await self._cleanup()
 
     async def _init_session(self):
+        import sys as _sys
+        # Windows stdio workaround: SDK's anyio-based stdio_client hangs on Win32
+        if self.transport == 'stdio' and _sys.platform == 'win32':
+            client = _WindowsStdioMCPClient(
+                command=self.config['command'],
+                args=self.config.get('args', []),
+                env=self.config.get('env'),
+            )
+            ok = await asyncio.get_event_loop().run_in_executor(None, client.connect)
+            if not ok:
+                raise RuntimeError(f"Windows MCP stdio connect failed for {self.name}")
+            self._win_client = client  # keep ref for cleanup
+            self._session = _WindowsSessionAdapter(client)
+            self._ctx = self._session  # adapter supports __aexit__
+            await self._refresh_tools()
+            return
+
         from mcp import ClientSession
         if self.transport == 'stdio':
             from mcp.client.stdio import stdio_client, StdioServerParameters
