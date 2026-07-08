@@ -18,4 +18,4 @@ verification_report: "E2E verified on Windows+WSL with real codebase-memory-mcp.
 branch_status: merged-to-dev
 created_at: 2026-07-08
 verified_at: 2026-07-08
-archived: false
+archived: true
