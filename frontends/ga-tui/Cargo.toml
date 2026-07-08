@@ -18,3 +18,4 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 unicode-width = "0.2"
 tui-input = "0.12"
+tracing = "0.1"

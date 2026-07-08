@@ -3,6 +3,7 @@
 
 use crate::event::IpcMessage;
 use std::path::PathBuf;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -49,11 +50,12 @@ impl IpcClient {
             loop {
                 match try_connect_and_read(&socket_path, &tx).await {
                     Ok(()) => {
-                        // Connection closed, retry after delay
+                        // Connection closed gracefully, retry after delay
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     }
-                    Err(_) => {
+                    Err(e) => {
                         // Connection failed, retry after delay
+                        tracing::debug!("IPC connection error: {e}, retrying...");
                         tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                     }
                 }
@@ -66,10 +68,102 @@ impl IpcClient {
     /// Send a command to the core daemon
     pub async fn send_command(&self, cmd: IpcCommand) -> anyhow::Result<()> {
         let json = serde_json::to_string(&cmd)?;
-        // For now, write to stdout as stub; real impl would write to socket
-        let _ = json;
-        // TODO: actual socket write
+        let mut conn = connect_socket(&self.socket_path).await?;
+        // Protocol: each message is a JSON line terminated by newline
+        conn.write_all(json.as_bytes()).await?;
+        conn.write_all(b"\n").await?;
+        conn.flush().await?;
         Ok(())
+    }
+}
+
+/// Connect to the IPC socket (named pipe on Windows, Unix socket on Unix)
+async fn connect_socket(socket_path: &PathBuf) -> anyhow::Result<tokio::io::BufWriter<IpcStream>> {
+    let stream = IpcStream::connect(socket_path).await?;
+    Ok(tokio::io::BufWriter::new(stream))
+}
+
+/// Platform-specific IPC stream abstraction
+enum IpcStream {
+    #[cfg(windows)]
+    Windows(tokio::net::windows::named_pipe::NamedPipeClient),
+    #[cfg(unix)]
+    Unix(tokio::net::UnixStream),
+}
+
+impl IpcStream {
+    async fn connect(path: &PathBuf) -> anyhow::Result<Self> {
+        #[cfg(windows)]
+        {
+            // Named pipe path format: \\.\pipe\ga-core
+            let pipe_path = path.to_string_lossy().to_string();
+            let client = tokio::net::windows::named_pipe::ClientOptions::new()
+                .open(&pipe_path)?;
+            Ok(IpcStream::Windows(client))
+        }
+        #[cfg(unix)]
+        {
+            let stream = tokio::net::UnixStream::connect(path).await?;
+            Ok(IpcStream::Unix(stream))
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            anyhow::bail!("IPC not supported on this platform")
+        }
+    }
+}
+
+impl tokio::io::AsyncRead for IpcStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(windows)]
+            IpcStream::Windows(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+            #[cfg(unix)]
+            IpcStream::Unix(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for IpcStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            #[cfg(windows)]
+            IpcStream::Windows(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+            #[cfg(unix)]
+            IpcStream::Unix(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(windows)]
+            IpcStream::Windows(s) => std::pin::Pin::new(s).poll_flush(cx),
+            #[cfg(unix)]
+            IpcStream::Unix(s) => std::pin::Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            #[cfg(windows)]
+            IpcStream::Windows(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+            #[cfg(unix)]
+            IpcStream::Unix(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+        }
     }
 }
 
@@ -77,8 +171,24 @@ async fn try_connect_and_read(
     socket_path: &PathBuf,
     tx: &mpsc::Sender<IpcMessage>,
 ) -> anyhow::Result<()> {
-    // Stub: in real impl, connect to daemon and read messages
-    // For now, just sleep to avoid busy loop
-    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    let stream = IpcStream::connect(socket_path).await?;
+    let reader = BufReader::new(stream);
+
+    // Read JSON lines from the daemon
+    let mut lines = reader.lines();
+    while let Some(line) = lines.next_line().await? {
+        match serde_json::from_str::<IpcMessage>(&line) {
+            Ok(msg) => {
+                if tx.send(msg).await.is_err() {
+                    // Channel closed, app is shutting down
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse IPC message: {e}");
+            }
+        }
+    }
+    // Stream ended (daemon disconnected)
     Ok(())
 }

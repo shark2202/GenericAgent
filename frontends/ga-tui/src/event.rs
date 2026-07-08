@@ -18,7 +18,8 @@ pub enum AppEvent {
 }
 
 /// Messages from the ga-core daemon
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "type")]
 pub enum IpcMessage {
     SessionNew {
         session_id: String,
