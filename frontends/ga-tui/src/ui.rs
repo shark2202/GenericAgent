@@ -5,7 +5,7 @@ use crate::pane::{LineStyle, PaneStatus};
 use crate::theme::Theme;
 use crate::timeline;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Margin, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap},
@@ -95,7 +95,6 @@ fn render_tab_bar(f: &mut Frame, area: Rect, app: &App) {
                 PaneStatus::Error => app.theme.status_error,
                 PaneStatus::Detached => app.theme.text_dim,
             };
-            let title = format!(" {} {}:{} ", status_icon, pane.runner, pane.session_id);
             let is_active = i == app.active_pane;
             let style = if is_active {
                 Style::default().fg(app.theme.tab_active).add_modifier(Modifier::BOLD)
@@ -271,7 +270,6 @@ fn render_pane_content(f: &mut Frame, area: Rect, app: &App, pane_idx: usize) {
 
     // Render input line
     if let Some(input_area) = input_area {
-        let input_text = format!("> {}", app.input_buffer);
         let input_line = Paragraph::new(Line::from(vec![
             Span::styled("> ", Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
             Span::styled(&app.input_buffer, Style::default().fg(app.theme.fg)),

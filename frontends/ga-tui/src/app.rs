@@ -1,12 +1,11 @@
 //! Main application state and event handling
 
 use crate::config::Config;
-use crate::event::{AppEvent, IpcMessage};
+use crate::event::IpcMessage;
 use crate::ipc::IpcClient;
 use crate::pane::{LineStyle, Pane, PaneStatus, RunnerKind};
 use crate::theme::Theme;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
-use std::collections::HashMap;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent};
 
 /// Input mode for the TUI (matches herdr-style prefix/input/normal)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +30,7 @@ pub struct App {
     pub size: (u16, u16),
     pub ipc_client: Option<IpcClient>,
     pub goal_summary: Option<String>,
+    pub goals: Vec<crate::event::GoalSummary>,
 }
 
 impl App {
@@ -50,6 +50,7 @@ impl App {
             size: (80, 24),
             ipc_client: None,
             goal_summary: None,
+            goals: Vec::new(),
         }
     }
 
@@ -95,6 +96,9 @@ impl App {
             KeyCode::Char('n') => {
                 self.new_session();
             }
+            KeyCode::Char('c') => {
+                self.close_active_pane();
+            }
             KeyCode::Char('d') => {
                 self.detach_session();
             }
@@ -113,6 +117,16 @@ impl App {
             }
             KeyCode::Char('t') | KeyCode::Char('T') => {
                 self.theme = self.theme.cycle();
+            }
+            KeyCode::Left => {
+                if self.active_pane > 0 {
+                    self.active_pane -= 1;
+                }
+            }
+            KeyCode::Right => {
+                if !self.panes.is_empty() && self.active_pane < self.panes.len() - 1 {
+                    self.active_pane += 1;
+                }
             }
             KeyCode::Up => {
                 if let Some(pane) = self.panes.get_mut(self.active_pane) {
@@ -196,6 +210,11 @@ impl App {
         // Check for timed-out tool calls, update status indicators, etc.
     }
 
+    /// Render the UI to a testable buffer (for E2E tests)
+    pub fn render(&self, f: &mut ratatui::Frame) {
+        crate::ui::render(f, self);
+    }
+
     /// Handle IPC message from core daemon
     pub fn handle_ipc(&mut self, msg: IpcMessage) {
         match msg {
@@ -209,6 +228,7 @@ impl App {
                 };
                 let pane = Pane::new(self.panes.len(), session_id, kind, self.config.scrollback);
                 self.panes.push(pane);
+                self.active_pane = self.panes.len() - 1;
             }
             IpcMessage::SessionOutput { session_id, line } => {
                 if let Some(pane) = self.panes.iter_mut().find(|p| p.session_id == session_id) {
@@ -242,6 +262,12 @@ impl App {
             IpcMessage::GoalUpdate { goal_id: _, state } => {
                 self.goal_summary = Some(state);
             }
+            IpcMessage::GoalListResult { goals } => {
+                self.goals = goals;
+            }
+            IpcMessage::GoalError { goal_id: _, message } => {
+                self.last_error = Some(message);
+            }
             IpcMessage::Error { message } => {
                 self.last_error = Some(message);
             }
@@ -273,9 +299,21 @@ impl App {
         self.active_pane = self.panes.len() - 1;
     }
 
+    fn close_active_pane(&mut self) {
+        if !self.panes.is_empty() {
+            self.panes.remove(self.active_pane);
+            if self.active_pane >= self.panes.len() && !self.panes.is_empty() {
+                self.active_pane = self.panes.len() - 1;
+            }
+        }
+    }
+
     fn detach_session(&mut self) {
-        if let Some(pane) = self.panes.get_mut(self.active_pane) {
-            pane.status = PaneStatus::Detached;
+        if !self.panes.is_empty() {
+            self.panes.remove(self.active_pane);
+            if self.active_pane >= self.panes.len() && !self.panes.is_empty() {
+                self.active_pane = self.panes.len() - 1;
+            }
         }
     }
 
@@ -296,6 +334,7 @@ impl App {
         }
         // TODO: send to IPC
         self.input_buffer.clear();
+        self.mode = InputMode::Normal;
     }
 
     fn execute_command(&mut self) {

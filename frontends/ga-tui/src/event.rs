@@ -1,6 +1,5 @@
 //! Event handling for ga-tui
 
-use crate::app::App;
 use crate::pane::ApprovalRequest;
 use crossterm::event::{Event as CrosstermEvent, EventStream, KeyEvent, MouseEvent};
 use futures::StreamExt;
@@ -41,13 +40,30 @@ pub enum IpcMessage {
         session_id: String,
         approved: bool,
     },
+    // ── Goal events from daemon ──
     GoalUpdate {
         goal_id: String,
         state: String,
     },
+    GoalListResult {
+        goals: Vec<GoalSummary>,
+    },
+    GoalError {
+        goal_id: Option<String>,
+        message: String,
+    },
     Error {
         message: String,
     },
+}
+
+/// Summary of a goal for list display
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GoalSummary {
+    pub id: String,
+    pub title: String,
+    pub state: String,
+    pub priority: i64,
 }
 
 /// Event handler that reads crossterm events and forwards IPC messages
