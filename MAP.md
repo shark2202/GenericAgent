@@ -1,6 +1,6 @@
 # GenericAgent 项目地图 (MAP)
 
-> 最后更新: 2026-07-06
+> 最后更新: 2026-07-08
 
 ---
 
@@ -32,6 +32,8 @@ GenericAgent/
 ├── llmcore.py             ← LLM：多协议 Session 体系
 ├── simphtml.py            ← HTML：页面 DOM 精简
 ├── TMWebDriver.py         ← 浏览器：CDP 代理控制
+├── skill_loader.py        ← 技能发现：get_skill_catalog() + MCP 工具拼接
+├── mcp_client.py          ← MCP Client：MCPClientManager 单例 (stdio/SSE)
 ├── ga.cmd                 ← 快捷启动 (仅 Windows)
 ├── hub.pyw                ← 服务管理器 (tkinter)
 ├── launch.pyw             ← 桌面 GUI (pywebview+Streamlit)
@@ -57,6 +59,7 @@ GenericAgent/
 | `__init__.py` | 包初始化 |
 | `__main__.py` | `python -m ga_cli` 入口，调 `cli.main()` |
 | `cli.py` | 多子命令 CLI：`ga list` (列出前端/reflect)、`ga status` (状态)、`ga update` (更新) |
+| `mcp_cli.py` | MCP 子命令族：`ga mcp list/start/stop/restart`，管理 MCP Server 生命周期 |
 | `ga_cli.cmd` | Windows `ga` 命令映射 |
 | `ga-cli-install.cmd` | 一键安装 CLI (`pip install -e .`) |
 
@@ -180,6 +183,7 @@ GenericAgent/
 | `vue3_component_sop.md` | Vue3 组件 SOP |
 | `procmem_scanner_sop.md` | 进程内存扫描 SOP |
 | `ljqCtrl_sop.md` | 硬件控制 SOP |
+| `mcp_sop.md` | MCP Client SOP (配置、mcp_call、热更新、故障恢复、记忆融合) |
 
 ### L3 可执行工具
 
@@ -290,3 +294,4 @@ GenericAgent/
 4. **StepOutcome 控制流**: 工具不直接控制循环，只返回 outcome (next_prompt/should_exit/data)
 5. **自进化记忆**: 任务完成后 Agent 自发调用 `start_long_term_update` 将经验结晶为 L3 Skill
 6. **零依赖快速启动**: `agent_loop.py` + `agentmain.py` + `ga.py` + `llmcore.py` 构成最小可运行内核
+7. **MCP 工具扩展**: 通过 `mcp_client.py` 连接外部 MCP Server，工具列表经 `get_skill_catalog()` 注入 system prompt（与 Skill 索引同级），`mcp_call` 统一调用，配置热更新 + 自动重连，单 Server 故障隔离

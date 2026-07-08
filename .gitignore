@@ -93,6 +93,9 @@ memory/L4_raw_sessions/*
 # Morphling SOP
 !memory/morphling_sop.md
 
+# MCP Client SOP
+!memory/mcp_sop.md
+
 
 # ADB UI tool
 !memory/adb_ui.py

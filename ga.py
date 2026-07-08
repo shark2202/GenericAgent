@@ -450,6 +450,23 @@ class GenericAgentHandler(BaseHandler):
         #next_prompt += '\n[SYSTEM TIPS] 此函数一般在任务开始或中间时调用，如果任务已成功完成应该是start_long_term_update用于结算长期记忆。\n'
         return StepOutcome({"result": "working key_info updated"}, next_prompt=next_prompt)
 
+    def do_mcp_call(self, args, response):
+        '''调用连接的 MCP (Model Context Protocol) Server 上的工具。通过 get_system_prompt 的 MCP 部分发现可用的 server 和工具。'''
+        server = args.get('server', '')
+        tool = args.get('tool', '')
+        arguments = args.get('arguments', {})
+        mcp_mgr = getattr(self, '_mcp_manager', None)
+        if mcp_mgr is None:
+            yield f"[Error] MCP Client not initialized\n"
+            return StepOutcome(None, next_prompt="MCP Client not available")
+        try:
+            result = mcp_mgr.call_tool(server, tool, arguments)
+            yield f"[MCP] {server}/{tool} result:\n{json.dumps(result, indent=2, ensure_ascii=False, default=json_default)}\n"
+            return StepOutcome(result, next_prompt="\n")
+        except Exception as e:
+            yield f"[MCP Error] {server}/{tool}: {e}\n"
+            return StepOutcome(None, next_prompt=f"MCP call failed: {e}")
+
     def _retry_or_exit(self, prompt):
         self._empty_ct = getattr(self, '_empty_ct', 0) + 1
         if self._empty_ct >= 3: return StepOutcome({}, should_exit=True)

@@ -1,0 +1,15 @@
+{
+  "change": "add-mcp-integration",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "1f4fe759701352729283abe3b35928f2f8da8cf6391f30b20703249771ed9f2c",
+  "files": [
+    { "path": "openspec/changes/add-mcp-integration/proposal.md", "sha256": "604fbd9bef1b52754538974b3b8567a2b7cf91b1d4ab920a3474535bf653aef8" },
+    { "path": "openspec/changes/add-mcp-integration/design.md", "sha256": "ff5b9138747d581a11ccea339f2b9e0c274e9b3c9e4aa2b31bcae882302ac765" },
+    { "path": "openspec/changes/add-mcp-integration/tasks.md", "sha256": "a484cbebd014c6a4e41d25e688906e5b9ff68f161a8c649cbe6acecd4872506a" },
+    { "path": "openspec/changes/add-mcp-integration/specs/mcp-client/spec.md", "sha256": "1d66ddbb0483745edb526267100f58b80c4ed82f2a260a3912a6816477796898" },
+    { "path": "openspec/changes/add-mcp-integration/specs/skill-discovery/spec.md", "sha256": "16b2810593977d112a9306b24155fa607efeb9ab84367c1e615cf2d2b149405d" }
+  ]
+}
