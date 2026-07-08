@@ -2,6 +2,7 @@
 change: add-skill-support
 design-doc: docs/superpowers/specs/2026-07-06-add-skill-support-design.md
 base-ref: 046e5f6bc16f8dd0d955cff38782c7f47874bcf5
+archived-with: 2026-07-08-add-skill-support
 ---
 
 # Plan: AGENT SKILL 加载支持
@@ -33,3 +34,4 @@ base-ref: 046e5f6bc16f8dd0d955cff38782c7f47874bcf5
 ## 执行顺序
 
 1 → 2 → 3（依赖顺次）
+

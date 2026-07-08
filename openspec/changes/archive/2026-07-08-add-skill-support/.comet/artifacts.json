@@ -1,0 +1,11 @@
+{
+  "openspec_proposal": "openspec/changes/add-skill-support/proposal.md",
+  "openspec_design": "openspec/changes/add-skill-support/design.md",
+  "openspec_tasks": "openspec/changes/add-skill-support/tasks.md",
+  "openspec_delta_spec": "openspec/changes/add-skill-support/specs/skill-discovery/spec.md",
+  "design_document": "docs/superpowers/specs/2026-07-06-add-skill-support-design.md",
+  "build_plan": "docs/superpowers/plans/2026-07-06-add-skill-support.md",
+  "build_tasks_complete": "openspec/changes/add-skill-support/tasks.md",
+  "verification_report": "docs/superpowers/reports/2026-07-06-add-skill-support-verify.md",
+  "archive_directory": "openspec/changes/archive/2026-07-08-add-skill-support"
+}

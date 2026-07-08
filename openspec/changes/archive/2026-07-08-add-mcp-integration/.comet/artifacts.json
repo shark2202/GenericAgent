@@ -1,0 +1,9 @@
+{
+  "openspec_proposal": "openspec/changes/add-mcp-integration/proposal.md",
+  "openspec_design": "openspec/changes/add-mcp-integration/design.md",
+  "openspec_tasks": "openspec/changes/add-mcp-integration/tasks.md",
+  "openspec_delta_spec": "openspec/changes/add-mcp-integration/specs/mcp-client/spec.md",
+  "handoff_context": "openspec/changes/add-mcp-integration/.comet/handoff/design-context.json",
+  "handoff_markdown": "openspec/changes/add-mcp-integration/.comet/handoff/design-context.md",
+  "archive_directory": "openspec/changes/archive/2026-07-08-add-mcp-integration"
+}

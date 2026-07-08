@@ -1,0 +1,15 @@
+{
+  "change": "integrate-skills-with-memory",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "a2ad6b56eb56d9f139c4d54bdc2a760a0ae0f2f793c5abf3e9288052b78d5f0c",
+  "files": [
+    { "path": "openspec/changes/integrate-skills-with-memory/proposal.md", "sha256": "3b1bfe562c535de7d3c086bb228eb7f7c77f3e7ed01a7bc6cebd003cfc110607" },
+    { "path": "openspec/changes/integrate-skills-with-memory/design.md", "sha256": "5dff5b8eed5eb1df04b81895defa3ac8d1bd245cdbbe0125a33180685e2356a9" },
+    { "path": "openspec/changes/integrate-skills-with-memory/tasks.md", "sha256": "2086015f9530b53d67de25ebc25e489cc84bfedd62e81956efbffba56f753195" },
+    { "path": "openspec/changes/integrate-skills-with-memory/specs/skill-discovery/spec.md", "sha256": "0e59da0957d4c123458ae4ccaa8f098e250129511c9ee70efd96ab7b4dcecbfd" },
+    { "path": "openspec/changes/integrate-skills-with-memory/specs/skill-memory-integration/spec.md", "sha256": "85c13a07b726feb4e848c9419a49662247752b65b8cd361503b9f42286af7a85" }
+  ]
+}

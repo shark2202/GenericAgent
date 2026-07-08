@@ -1,0 +1,8 @@
+{
+  "openspec_proposal": "openspec/changes/integrate-skills-with-memory/proposal.md",
+  "openspec_design": "openspec/changes/integrate-skills-with-memory/design.md",
+  "openspec_tasks": "openspec/changes/integrate-skills-with-memory/tasks.md",
+  "openspec_delta_spec": "openspec/changes/integrate-skills-with-memory/specs/skill-discovery/spec.md",
+  "handoff_context": "openspec/changes/integrate-skills-with-memory/.comet/handoff/design-context.json",
+  "handoff_markdown": "openspec/changes/integrate-skills-with-memory/.comet/handoff/design-context.md"
+}

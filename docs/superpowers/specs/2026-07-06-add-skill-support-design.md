@@ -2,6 +2,8 @@
 comet_change: add-skill-support
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-08-add-skill-support
+status: final
 ---
 
 # Design Doc: AGENT SKILL 加载支持
@@ -100,3 +102,4 @@ def get_system_prompt():
 - **集成**：启动 GA，检查 system_prompt 末尾
 - **端到端**：agent 用 comet skill 完成操作
 - **边界**：目录不存在、空 frontmatter、无 name、目录名≠frontmatter name
+

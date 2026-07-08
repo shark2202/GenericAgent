@@ -1,0 +1,30 @@
+workflow: full
+language: zh-CN
+phase: archive
+context_compression: off
+build_mode: subagent-driven-development
+build_pause: null
+subagent_dispatch: confirmed
+tdd_mode: tdd
+review_mode: thorough
+isolation: worktree
+verify_mode: null
+auto_transition: true
+base_ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
+design_doc: docs/superpowers/specs/2026-01-08-add-mcp-integration-design.md
+plan: docs/superpowers/plans/2026-01-08-add-mcp-integration.md
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-07-08-add-mcp-integration-verify.md
+branch_status: handled
+created_at: 2026-07-08
+verified_at: 2026-07-08
+archived: true
+direct_override: true
+build_command: null
+verify_command: python3 -m pytest tests/test_mcp_client.py
+  tests/test_mcp_ga_integration.py tests/test_mcp_memory_integration.py -v
+handoff_context: openspec/changes/add-mcp-integration/.comet/handoff/design-context.json
+handoff_hash: 1f4fe759701352729283abe3b35928f2f8da8cf6391f30b20703249771ed9f2c
+classic_profile: full
+classic_migration: 1
+run_id: 869854bf-e82e-49a5-a459-de40e2f08b25

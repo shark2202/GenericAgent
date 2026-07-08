@@ -49,3 +49,34 @@ packages = ["ga_cli"]
 
 [project.scripts]
 ga = "ga_cli.cli:main"
+
+# ---------------------------------------------------------------------------
+# Quality tooling configuration
+# ---------------------------------------------------------------------------
+# Canonical ruff / pytest / coverage settings. Local `ruff check .` and
+# `pytest tests/` use these. Existing code may have historical violations;
+# fix them in a dedicated pass before enabling dev CI as a blocking gate.
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]  # line-length enforced by formatter; avoids noise on existing long lines
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["ga_cli", "mcp_client", "agent_loop", "agentmain", "ga", "llmcore", "simphtml", "TMWebDriver", "skill_loader"]
+omit = ["tests/*", "frontends/*", "reflect/*", "plugins/*", "memory/*", "assets/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

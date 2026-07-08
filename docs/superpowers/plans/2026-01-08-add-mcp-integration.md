@@ -2,6 +2,7 @@
 change: add-mcp-integration
 design-doc: docs/superpowers/specs/2026-01-08-add-mcp-integration-design.md
 base-ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
+archived-with: 2026-07-08-add-mcp-integration
 ---
 
 # MCP Integration 实施计划
@@ -107,3 +108,4 @@ base-ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
 - [x] 故障重连：kill Server → 自动恢复
 - [x] 审计日志可查
 - [x] system prompt 包含 MCP 工具列表
+

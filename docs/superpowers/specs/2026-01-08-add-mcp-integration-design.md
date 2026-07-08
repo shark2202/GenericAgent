@@ -2,6 +2,8 @@
 comet_change: add-mcp-integration
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 # MCP Client 与 GenericAgent 记忆/自进化融合 — 深度技术设计
@@ -48,6 +50,8 @@ canonical_spec: openspec
 | `ga mcp` CLI | `ga_cli/cli.py` | 子命令族：list/start/stop/restart |
 | `get_skill_catalog()` 扩展 | `skill_loader.py` | 注入 MCP 工具列表到 system prompt |
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 2. 数据流
@@ -103,6 +107,8 @@ canonical_spec: openspec
 8. → 用户可手动 ga mcp stop/restart 干预
 ```
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 3. 接口设计
@@ -197,6 +203,8 @@ ga mcp restart <name>            # 断开 + 重连指定 Server
 ga mcp reload                    # 手动触发热更新（重新加载 .ga/mcp_servers.json）
 ```
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 4. 与现有系统的融合点
@@ -247,6 +255,8 @@ mcp_dependencies:
 {"ts": "2026-01-08T10:03:30Z", "type": "schema_change", "server": "filesystem", "added": ["delete_file"], "removed": []}
 ```
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 5. 重连与退避策略
@@ -277,6 +287,8 @@ CONNECTED ──(ping 失败)──→ RECONNECTING ──(成功)──→ CONN
 | 心跳失败 | 进入重连状态 | INFO |
 | 重连后 schema 变更 | 更新 registry，注解审计日志 | INFO |
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 7. 测试策略
@@ -306,6 +318,8 @@ CONNECTED ──(ping 失败)──→ RECONNECTING ──(成功)──→ CONN
 - `test_cli_list`：`ga mcp list` 输出正确
 - `test_cli_stop_start`：启停 Server 正常
 
+archived-with: 2026-07-08-add-mcp-integration
+status: final
 ---
 
 ## 8. 开放问题
@@ -314,3 +328,4 @@ CONNECTED ──(ping 失败)──→ RECONNECTING ──(成功)──→ CONN
   - **方向**：优先检查 mcp SDK 是否提供同步 Client；若有则直接用；若无则 `asyncio.run()` 桥接
 - [ ] stdio transport 的 env 变量传递：`mcp_servers.json` 中的 `env` 字段如何合并到子进程环境？
   - **方向**：合并到 `os.environ.copy() + server_config.env`
+
