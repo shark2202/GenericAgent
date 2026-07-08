@@ -313,11 +313,8 @@ impl App {
     }
 
     fn detach_session(&mut self) {
-        if !self.panes.is_empty() {
-            self.panes.remove(self.active_pane);
-            if self.active_pane >= self.panes.len() && !self.panes.is_empty() {
-                self.active_pane = self.panes.len() - 1;
-            }
+        if let Some(pane) = self.panes.get_mut(self.active_pane) {
+            pane.status = PaneStatus::Detached;
         }
     }
 
@@ -404,5 +401,58 @@ mod tests {
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.panes[0].runner, RunnerKind::Subprocess);
         assert_eq!(app.panes[0].session_id, "sub-1");
+    }
+
+    #[test]
+    fn test_detach_sets_status_not_remove() {
+        let mut app = make_app();
+        app.command_text = "sub".to_string();
+        app.execute_command();
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.panes[0].status, PaneStatus::Working);
+
+        // detach should set status, NOT remove the pane
+        app.detach_session();
+        assert_eq!(app.panes.len(), 1); // pane still exists
+        assert_eq!(app.panes[0].status, PaneStatus::Detached);
+    }
+
+    #[test]
+    fn test_attach_restores_working_status() {
+        let mut app = make_app();
+        app.command_text = "sub".to_string();
+        app.execute_command();
+        app.detach_session();
+        assert_eq!(app.panes[0].status, PaneStatus::Detached);
+
+        // attach should restore Working status
+        app.attach_session();
+        assert_eq!(app.panes[0].status, PaneStatus::Working);
+    }
+
+    #[test]
+    fn test_close_actually_removes_pane() {
+        let mut app = make_app();
+        app.command_text = "sub".to_string();
+        app.execute_command();
+        assert_eq!(app.panes.len(), 1);
+
+        // close should remove the pane (unlike detach)
+        app.close_active_pane();
+        assert!(app.panes.is_empty());
+    }
+
+    #[test]
+    fn test_detach_then_close_removes() {
+        let mut app = make_app();
+        app.command_text = "sub".to_string();
+        app.execute_command();
+        app.detach_session();
+        assert_eq!(app.panes.len(), 1);
+        assert_eq!(app.panes[0].status, PaneStatus::Detached);
+
+        // After detach, close should still work and remove the pane
+        app.close_active_pane();
+        assert!(app.panes.is_empty());
     }
 }

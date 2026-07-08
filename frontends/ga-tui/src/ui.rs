@@ -246,11 +246,14 @@ fn render_pane_content(f: &mut Frame, area: Rect, app: &App, pane_idx: usize) {
         0
     };
 
+    // Take generous count to account for visual wrapping;
+    // ratatui clips to content_area so overflow is harmless.
+    let take_count = visible_height * 3;
     let styled_lines: Vec<Line> = pane
         .lines
         .iter()
         .skip(start_idx)
-        .take(visible_height)
+        .take(take_count)
         .map(|line| {
             let style = match line.style {
                 LineStyle::Normal => Style::default().fg(app.theme.fg),

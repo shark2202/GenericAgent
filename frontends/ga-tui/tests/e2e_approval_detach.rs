@@ -108,15 +108,16 @@ fn close_active_pane_removes_pane() {
 }
 
 #[test]
-fn detach_session_removes_pane() {
+fn detach_session_sets_status() {
     let mut app = make_app();
     add_session(&mut app, "s1");
     add_session(&mut app, "s2");
     assert_eq!(app.panes.len(), 2);
 
-    // 'd' detaches (removes) active pane
+    // 'd' detaches active pane (sets status, does NOT remove)
     press(&mut app, KeyCode::Char('d'));
-    assert_eq!(app.panes.len(), 1);
+    assert_eq!(app.panes.len(), 2);
+    assert_eq!(app.panes[app.active_pane].status, PaneStatus::Detached);
 }
 
 #[test]

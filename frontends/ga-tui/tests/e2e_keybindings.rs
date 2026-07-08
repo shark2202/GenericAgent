@@ -7,7 +7,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ga_tui::app::{App, InputMode};
 use ga_tui::config::Config;
 use ga_tui::event::IpcMessage;
-use ga_tui::pane::RunnerKind;
+use ga_tui::pane::{PaneStatus, RunnerKind};
 
 fn make_app() -> App {
     App::new(Config::default())
@@ -68,8 +68,9 @@ fn d_key_detaches_session() {
         runner: "ga".into(),
     });
     app.handle_key(press(KeyCode::Char('d')));
-    // After detach, pane is removed
-    assert_eq!(app.panes.len(), 0);
+    // After detach, pane remains but status is Detached
+    assert_eq!(app.panes.len(), 1);
+    assert_eq!(app.panes[0].status, PaneStatus::Detached);
 }
 
 #[test]
