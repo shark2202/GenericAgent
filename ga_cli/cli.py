@@ -98,6 +98,11 @@ COMMANDS = {
         "cmd": None,
         "internal": True,
     },
+    "mcp": {
+        "help": "Manage MCP servers",
+        "desc": "List, start, stop, restart MCP servers",
+        "cmd": ["python", "{PROJECT_DIR}/ga_cli/mcp_cli.py"],
+    },
 }
 
 
