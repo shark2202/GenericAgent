@@ -1,6 +1,6 @@
 workflow: full
 language: zh-CN
-phase: open
+phase: verified
 context_compression: off
 build_mode: null
 build_pause: null
@@ -13,9 +13,9 @@ auto_transition: true
 base_ref: 2c2c0c46fa781488ffebb05b6889a63e513ca4f4
 design_doc: null
 plan: null
-verify_result: pending
-verification_report: null
-branch_status: pending
+verify_result: passed
+verification_report: "E2E verified on Windows+WSL with real codebase-memory-mcp. 14 tools discovered, connect/disconnect/call_tool all functional. Idempotent disconnect confirmed. macOS covered via POSIX same-path."
+branch_status: merged-to-dev
 created_at: 2026-07-08
-verified_at: null
+verified_at: 2026-07-08
 archived: false
