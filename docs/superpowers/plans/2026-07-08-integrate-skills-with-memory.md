@@ -2,6 +2,7 @@
 change: integrate-skills-with-memory
 design-doc: docs/superpowers/specs/2026-07-08-integrate-skills-with-memory-design.md
 base-ref: 19eebd5d2ea211e231eb9a052ef314d6f9b2c6fb
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 # Plan: Skill 与 L1-L4 记忆体系集成
@@ -25,6 +26,7 @@ base-ref: 19eebd5d2ea211e231eb9a052ef314d6f9b2c6fb
 3. **L1 文件状态**：当前 `memory/global_mem_insight.txt` 不存在。`agentmain.py` line 36-39 有首次创建逻辑（从 template 复制）。`sync_skills_to_l1()` 的 `_replace_between_markers()` 已处理 `FileNotFoundError`，但首次运行应先让 `agentmain.py` 的初始化逻辑创建 L1 文件，或由 sync 函数自行创建空文件。
 4. **Skill 目录现状**：用户级 `$HOME/.agents/skills/` 有 66 个 Skill；项目级 `.agents/skills/` 不存在。`_scan_dir` 已处理目录不存在的情况（静默返回空 dict）。
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ## 任务分解
@@ -198,6 +200,7 @@ skill_loader.py
 └── sync_skills_to_l1()                       # [新增→替换] Step 1.4, 替换 get_skill_catalog()
 ```
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 2: agentmain.py 改动
@@ -250,6 +253,7 @@ def get_system_prompt():
 
 > 对应 tasks.md 2.2、2.3。此步骤为验证步骤，在 Phase 8 测试中确认。
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 3: ga.py 集成 sync 调用
@@ -321,6 +325,7 @@ elif turn % 10 == 0: next_prompt += get_global_memory()
 
 此行调用 `get_global_memory()`，间接触发 sync。**无需改动**，sync 自动随每 10 轮重新注入时执行。
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 4: L1 索引格式定义
@@ -354,6 +359,7 @@ comet-build: /root/.agents/skills/comet-build/SKILL.md
 
 **无需手动迁移脚本**，sync 函数自动处理。
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 5: 工作记忆集成（验证，无代码改动）
@@ -386,6 +392,7 @@ if self.handler and 'key_info' in self.handler.working:
 
 **结论**：无需改动，复用现有机制。
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 6: 自进化经验文件（验证，无代码改动）
@@ -415,6 +422,7 @@ if self.handler and 'key_info' in self.handler.working:
 - [x] L1 同一行同时指向 SKILL.md（技能本体）和 `skill_exp_*.md`（使用经验）
 - [x] Agent 可按需 `file_read` 两者
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 7: 可选增强 — 版本备份
@@ -464,6 +472,7 @@ def backup_and_patch_skill(skill_md_path, patch_content):
   - [x] 设置后调用 → 创建 `.bak` 文件（仅首次，不覆盖已有备份）
   - [x] Agent 需先调用此函数备份，再用 `file_patch` 修改 SKILL.md
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ### Phase 8: 测试
@@ -873,6 +882,7 @@ python -m pytest tests/test_mcp_memory_integration.py -v
 python -m pytest tests/ -v
 ```
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ## 执行顺序
@@ -914,6 +924,7 @@ Phase 2 (agentmain.py)          Phase 3 (ga.py)
 - Phase 8 测试依赖 Phase 1-3 全部完成
 - Phase 5-6 是验证步骤，可在 Phase 8 集成测试中一并完成
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ## 回滚策略
@@ -926,6 +937,7 @@ Phase 2 (agentmain.py)          Phase 3 (ga.py)
 4. **清理 L1**：手动删除 `global_mem_insight.txt` 中的 `<!-- auto-skills-start -->` ~ `<!-- auto-skills-end -->` 段（不影响 L1 其他内容）
 5. **恢复测试**：`git checkout HEAD -- tests/test_mcp_memory_integration.py`
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ## 风险与注意事项
@@ -941,6 +953,7 @@ Phase 2 (agentmain.py)          Phase 3 (ga.py)
 | **首次运行 L1 无 marker** | 低 | `_replace_between_markers` 追加到末尾（Step 1.3 边界条件） |
 | **66 个 Skill 注入 L1** | 低 | 每行极简（name + 路径），约 68 行（66 entries + 2 marker），远低于旧 catalog token 量 |
 
+archived-with: 2026-07-08-integrate-skills-with-memory
 ---
 
 ## 文件变更清单
@@ -952,3 +965,4 @@ Phase 2 (agentmain.py)          Phase 3 (ga.py)
 | `ga.py` | 修改 | 添加 import + `get_global_memory()` 中 sync 调用（约 4 行） |
 | `tests/test_skill_loader_l1.py` | 新建 | 16+ 个单元/集成测试用例 |
 | `tests/test_mcp_memory_integration.py` | 修改 | 删除 3 个 `get_skill_catalog()` 测试函数 |
+

@@ -2,6 +2,8 @@
 comet_change: integrate-skills-with-memory
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-08-integrate-skills-with-memory
+status: final
 ---
 
 # Design Doc: Skill 与 L1-L4 记忆体系集成
@@ -340,3 +342,4 @@ comet-build: /root/.agents/skills/comet-build/SKILL.md
 - **Skill 目录不存在**：静默跳过，不报错
 - **经验文件被删除**：下次 sync 时条目自动从双路径变为单路径
 - **Skill 被外部更新**（git pull）：下次 sync 时路径不变，L1 条目不变（路径未变）；如 Skill name 变了，L1 条目 name 更新
+

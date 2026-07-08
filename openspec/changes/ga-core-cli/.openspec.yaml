@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-08
+goal: Rust Core+CLI foundation MVP replacing ga_cli, driving Python GA engine as
+  sidecar

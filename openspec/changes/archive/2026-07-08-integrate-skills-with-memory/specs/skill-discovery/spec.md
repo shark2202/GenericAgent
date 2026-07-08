@@ -26,7 +26,7 @@ The system SHALL scan `$HOME/.agents/skills/` and `$CWD/.agents/skills/` for dir
 
 ### Requirement: Skill Catalog Injection into System Prompt
 
-**REMOVED**: The system SHALL NO LONGER append the skill catalog to the system prompt as a flat list. Skill discovery results are routed exclusively through the L1 index `[Skills]` section, which is already injected into the system prompt via `get_global_memory()`.
+The system SHALL NOT append a skill catalog section to the system prompt. Skill discovery results are routed exclusively through the L1 index `[Skills]` section, which is injected into the system prompt via `get_global_memory()`.
 
 #### Scenario: No skill catalog appended to system prompt
 - **WHEN** `get_system_prompt()` is called
