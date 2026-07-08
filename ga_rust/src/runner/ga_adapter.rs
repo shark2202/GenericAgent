@@ -1,18 +1,25 @@
 use anyhow::{Result, Context};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 
 use super::trait_def::{Runner, RunnerContext, RunnerOutput, RunnerStatus};
 
 /// GA Python engine runner adapter
 pub struct GaRunner {
     ga_root: PathBuf,
+    /// Track session_id -> PID for stop/status operations
+    sessions: Mutex<HashMap<String, u32>>,
 }
 
 impl GaRunner {
     pub fn new(ga_root: PathBuf) -> Self {
-        Self { ga_root }
+        Self {
+            ga_root,
+            sessions: Mutex::new(HashMap::new()),
+        }
     }
 
     fn find_python(&self) -> Result<String> {
@@ -60,6 +67,11 @@ impl Runner for GaRunner {
         let child = cmd.spawn().context("Failed to start GA runner")?;
         let pid = child.id();
 
+        // Track session PID for stop/status
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.insert(ctx.session_id.clone(), pid);
+        }
+
         Ok(RunnerOutput {
             session_id: ctx.session_id.clone(),
             status: RunnerStatus::Running,
@@ -67,13 +79,73 @@ impl Runner for GaRunner {
         })
     }
 
-    async fn stop(&self, _session_id: &str) -> Result<()> {
-        // TODO: Send SIGTERM / taskkill
+    async fn stop(&self, session_id: &str) -> Result<()> {
+        let pid = {
+            let mut sessions = self.sessions.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+            sessions.remove(session_id)
+        };
+
+        if let Some(pid) = pid {
+            #[cfg(windows)]
+            {
+                let exit = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F"])
+                    .output()
+                    .context("Failed to run taskkill")?;
+                if !exit.status.success() {
+                    tracing::warn!("taskkill for PID {} returned non-zero: {}", pid, String::from_utf8_lossy(&exit.stderr));
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGTERM);
+                }
+            }
+        } else {
+            tracing::warn!("No PID found for session {}, may have already stopped", session_id);
+        }
         Ok(())
     }
 
-    async fn status(&self, _session_id: &str) -> Result<RunnerStatus> {
-        // TODO: Check process status via PID from store
-        Ok(RunnerStatus::Running)
+    async fn status(&self, session_id: &str) -> Result<RunnerStatus> {
+        let pid = {
+            let sessions = self.sessions.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+            sessions.get(session_id).copied()
+        };
+
+        if let Some(pid) = pid {
+            // Check if process is still alive
+            #[cfg(windows)]
+            {
+                let output = Command::new("tasklist")
+                    .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+                    .output()
+                    .context("Failed to run tasklist")?;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.contains(&pid.to_string()) {
+                    Ok(RunnerStatus::Running)
+                } else {
+                    // Process exited, clean up
+                    let mut sessions = self.sessions.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+                    sessions.remove(session_id);
+                    Ok(RunnerStatus::Stopped)
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                // On Unix, check with kill(pid, 0)
+                let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+                if alive {
+                    Ok(RunnerStatus::Running)
+                } else {
+                    let mut sessions = self.sessions.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+                    sessions.remove(session_id);
+                    Ok(RunnerStatus::Stopped)
+                }
+            }
+        } else {
+            Ok(RunnerStatus::Stopped)
+        }
     }
 }
