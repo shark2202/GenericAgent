@@ -8,13 +8,11 @@ _QUICK_PROVIDERS = {
     "anthropic": {
         "key_prefix": "native_claude_config",
         "apibase": "https://api.anthropic.com",
-        "model": "claude-opus-4-7",
         "extras": {"thinking_type": "adaptive"},
     },
     "openai": {
         "key_prefix": "native_oai_config",
         "apibase": "https://api.openai.com/v1",
-        "model": "gpt-5.5",
         "extras": {"api_mode": "chat_completions"},
     },
 }
@@ -31,6 +29,47 @@ _ADVANCED_FIELDS = [
 
 def validate_apikey(key):
     return bool(key) and len(key.strip()) >= 20
+
+
+def fetch_models(apibase, apikey, provider):
+    """Fetch available models via GET /v1/models.
+
+    Returns a list of (display_name, id) tuples on success, or None on any failure.
+    Uses the same URL convention as llmcore.auto_make_url: if the base already
+    contains a /vN segment, append /models; otherwise prepend /v1/models.
+    """
+    try:
+        import re
+        import requests
+
+        base = apibase.rstrip("/")
+        if re.search(r"/v\d+(/|$)", base):
+            url = f"{base}/models"
+        else:
+            url = f"{base}/v1/models"
+
+        if provider == "anthropic":
+            headers = {
+                "x-api-key": apikey,
+                "anthropic-version": "2023-06-01",
+            }
+        else:
+            headers = {"Authorization": f"Bearer {apikey}"}
+
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+
+        models = []
+        for item in data[:20]:
+            mid = item.get("id", "")
+            if not mid:
+                continue
+            display = item.get("display_name") or mid
+            models.append((display, mid))
+        return models if models else None
+    except Exception:
+        return None
 
 
 def detect_existing(path):
@@ -70,18 +109,14 @@ def _scan_next_index(path, prefix):
     return max(int(n) for n in existing) + 1
 
 
-def generate_config_block(provider, apikey, block_index=0, **advanced):
+def generate_config_block(provider, apikey, apibase, model, block_index=0, **advanced):
     """Generate a JSONC config block string. Returns the block text (without outer braces)."""
     if provider == "custom":
         prefix = "native_custom_config"
-        apibase = advanced.pop("apibase", "")
-        model = advanced.pop("model", "")
         extras = {}
     elif provider in _QUICK_PROVIDERS:
         info = _QUICK_PROVIDERS[provider]
         prefix = info["key_prefix"]
-        apibase = info["apibase"]
-        model = info["model"]
         extras = dict(info.get("extras", {}))
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -155,15 +190,8 @@ def run_setup_wizard():
         print("Exiting without changes.")
         return
 
-    # Step 2: Quick setup
+    # Step 2: Provider selection
     print("\n── Quick Setup ──")
-
-    apikey = ""
-    while not validate_apikey(apikey):
-        apikey = getpass.getpass("  API Key: ").strip()
-        if not validate_apikey(apikey):
-            print("  API Key must be at least 20 characters. Please try again.")
-
     print("\n  Providers:")
     print("    [1] Anthropic (Claude)")
     print("    [2] OpenAI (GPT)")
@@ -176,29 +204,70 @@ def run_setup_wizard():
         print(f"  Invalid choice '{provider_choice}', defaulting to Anthropic.")
         provider = "anthropic"
 
-    advanced = {}
-    if provider == "custom":
-        advanced["apibase"] = input("  API Base URL: ").strip()
-        advanced["model"] = input("  Model name: ").strip()
+    # Step 3: API Base URL (with default, overridable)
+    default_apibase = _QUICK_PROVIDERS.get(provider, {}).get("apibase", "")
+    if default_apibase:
+        apibase = input(f"  API Base URL [{default_apibase}]: ").strip() or default_apibase
+    else:
+        apibase = ""
+        while not apibase:
+            apibase = input("  API Base URL: ").strip()
+            if not apibase:
+                print("  API Base URL is required.")
 
-    # Step 3: Generate config block
+    # Step 4: API Key
+    apikey = ""
+    while not validate_apikey(apikey):
+        apikey = getpass.getpass("  API Key: ").strip()
+        if not validate_apikey(apikey):
+            print("  API Key must be at least 20 characters. Please try again.")
+
+    # Step 5: Model discovery via GET /v1/models (with fallback to manual input)
+    models = fetch_models(apibase, apikey, provider)
+    if models:
+        print("\n  Available models:")
+        for i, (display, mid) in enumerate(models, 1):
+            print(f"    [{i}] {display} ({mid})")
+        print("    [0] Enter model name manually")
+        model = ""
+        while not model:
+            sel = input(f"  Select model [1-{len(models)}/0]: ").strip()
+            if sel == "0":
+                model = input("  Model name: ").strip()
+            else:
+                try:
+                    idx = int(sel)
+                    if 1 <= idx <= len(models):
+                        model = models[idx - 1][1]
+                    else:
+                        print("  Invalid choice.")
+                except ValueError:
+                    print("  Invalid choice.")
+    else:
+        print("  ⚠️  Could not fetch model list (network error or invalid key).")
+        model = ""
+        while not model:
+            model = input("  Model name: ").strip()
+            if not model:
+                print("  Model name is required.")
+
+    # Step 6: Generate config block
     if choice == "append":
-        block_index = _scan_next_index(target_path, _QUICK_PROVIDERS.get(provider, {}).get("key_prefix", "native_custom_config"))
+        prefix = _QUICK_PROVIDERS.get(provider, {}).get("key_prefix", "native_custom_config")
+        block_index = _scan_next_index(target_path, prefix)
     else:
         block_index = 0
 
-    block = generate_config_block(provider, apikey, block_index=block_index, **advanced)
+    block = generate_config_block(provider, apikey, apibase=apibase, model=model, block_index=block_index)
 
-    # Step 4: Advanced mode
+    # Step 7: Advanced mode
     adv_choice = input("\n  Configure advanced options? [y/N]: ").strip().lower()
     if adv_choice in ("y", "yes"):
         adv_config = _ask_advanced()
-        provider_for_index = provider if provider != "custom" else "custom"
-        prefix = _QUICK_PROVIDERS.get(provider, {"key_prefix": "native_custom_config"})["key_prefix"]
         idx = block_index if choice == "append" else 0
-        block = generate_config_block(provider, apikey, block_index=idx, **adv_config)
+        block = generate_config_block(provider, apikey, apibase=apibase, model=model, block_index=idx, **adv_config)
 
-    # Step 5: Write file
+    # Step 8: Write file
     if choice == "append" and os.path.exists(target_path):
         with open(target_path, "r", encoding="utf-8") as f:
             existing = f.read().rstrip()

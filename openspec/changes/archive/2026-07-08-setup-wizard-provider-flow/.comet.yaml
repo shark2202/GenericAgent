@@ -1,0 +1,29 @@
+workflow: tweak
+language: zh-CN
+phase: archive
+context_compression: off
+build_mode: direct
+build_pause: null
+subagent_dispatch: null
+tdd_mode: direct
+review_mode: off
+isolation: branch
+verify_mode: light
+auto_transition: true
+base_ref: 6b8d970a60836c227b8700f0a245f4a7fe838c19
+design_doc: null
+plan: null
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-07-08-setup-wizard-provider-flow-verify.md
+branch_status: handled
+created_at: 2026-07-08
+verified_at: 2026-07-08
+archived: true
+direct_override: null
+build_command: python3 -m py_compile ga_cli/setup_wizard.py
+verify_command: python3 openspec/changes/setup-wizard-provider-flow/verify_test.py
+handoff_context: null
+handoff_hash: null
+classic_profile: tweak
+classic_migration: 1
+run_id: e6605119-51fe-433b-9a53-b15fd9708ec9

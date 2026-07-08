@@ -2,6 +2,8 @@
 comet_change: ga-setup-wizard
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-08-ga-setup-wizard
+status: final
 ---
 
 # Design Doc: ga setup 交互式配置向导
@@ -81,3 +83,4 @@ ga setup (ga_cli/cli.py)
 | 追加到损坏 JSONC | 检查 { } 结构，异常建议覆盖 |
 | 厂商 model 名过时 | 最小列表（3 个），文档引导手动改 |
 | 隐藏输入跨平台 | 用 `getpass.getpass()`，Windows/macOS/Linux 通用 |
+

@@ -2,6 +2,7 @@
 change: ga-setup-wizard
 design-doc: docs/superpowers/specs/2026-07-07-ga-setup-wizard-design.md
 base-ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
+archived-with: 2026-07-08-ga-setup-wizard
 ---
 
 # Plan: ga setup 交互式配置向导
@@ -29,3 +30,4 @@ base-ref: aa0b707d9fb8d60c88ece7a1719e50b9fb693ada
 ## 执行顺序
 
 1 → 2 → 3
+
