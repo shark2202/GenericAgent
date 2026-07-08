@@ -49,6 +49,7 @@ impl Default for Theme {
 }
 
 impl Theme {
+    /// Catppuccin Mocha dark theme palette
     pub fn catppuccin_mocha() -> Self {
         Self {
             name: "catppuccin-mocha".into(),
@@ -80,6 +81,7 @@ impl Theme {
         }
     }
 
+    /// Tokyo Night dark theme palette
     pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo-night".into(),
@@ -111,6 +113,7 @@ impl Theme {
         }
     }
 
+    /// Select a theme by name, falling back to catppuccin_mocha if unknown
     pub fn by_name(name: &str) -> Self {
         match name {
             "catppuccin-mocha" => Self::catppuccin_mocha(),

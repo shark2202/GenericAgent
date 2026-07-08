@@ -3,15 +3,10 @@
 //! Multi-runner panes (blocked/working/done), detach/reattach,
 //! keyboard+mouse, themes, tool-timeline+approval rendering.
 
-mod app;
-mod approval;
-mod config;
-mod event;
-mod ipc;
-mod pane;
-mod theme;
-mod timeline;
-mod ui;
+use ga_tui::app::App;
+use ga_tui::config::Config;
+use ga_tui::event::{AppEvent, EventHandler};
+use ga_tui::ui;
 
 use std::io;
 
@@ -22,10 +17,6 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-
-use app::App;
-use config::Config;
-use event::{AppEvent, EventHandler};
 
 use tokio::sync::mpsc;
 
@@ -90,6 +81,15 @@ async fn run_app(
                 AppEvent::Resize(w, h) => app.handle_resize(w, h),
                 AppEvent::Tick => app.tick(),
                 AppEvent::Ipc(msg) => app.handle_ipc(msg),
+            }
+
+            // Drain and send pending IPC commands
+            for cmd in app.drain_commands() {
+                if let Some(ref ipc) = app.ipc_client {
+                    if let Err(e) = ipc.send_command(cmd).await {
+                        tracing::warn!("IPC send failed: {e}");
+                    }
+                }
             }
         }
 

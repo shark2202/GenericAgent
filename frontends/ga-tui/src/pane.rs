@@ -114,6 +114,7 @@ pub struct Pane {
 }
 
 impl Pane {
+    /// Create a new pane for a session with the given index, session ID, runner kind, and scrollback size
     pub fn new(index: usize, session_id: String, runner: RunnerKind, scrollback: usize) -> Self {
         Self {
             index,

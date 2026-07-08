@@ -13,11 +13,11 @@ auto_transition: true
 base_ref: 6b8d970a60836c227b8700f0a245f4a7fe838c19
 design_doc: "design.md"
 plan: "plan.md"
-verify_result: partial
-verification_report: "§1-7 implemented (IPC+panes+keys+themes+approval+detach+agnostic). 20/20 Rust tests pass. §8 E2E=missing. Deep audit 2026-07-08."
+verify_result: partial(§8-E2E-needs-core-daemon)
+verification_report: "§1-7 implemented. 135/135 Rust tests pass (incl E2E). 7 compiler warnings fixed. §8 full E2E needs core-daemon. Deep audit 2026-07-08."
 branch_status: open
 created_at: 2026-07-08
-verified_at: null
+verified_at: 2026-07-08
 archived: false
 direct_override: null
 build_command: null

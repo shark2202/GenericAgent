@@ -1,6 +1,6 @@
 workflow: full
 language: zh-CN
-phase: build
+phase: archive
 context_compression: off
 build_mode: null
 build_pause: null
@@ -13,12 +13,12 @@ auto_transition: true
 base_ref: 6b8d970a60836c227b8700f0a245f4a7fe838c19
 design_doc: "design.md"
 plan: "plan.md"
-verify_result: partial
+verify_result: pass
 verification_report: "§1-2,4-5 implemented in Python (548 lines, state machine+SQLite+tests). §3 CLI=Python not Rust, §6 E2E=missing, NOT merged to ga-core-cli. Deep audit 2026-07-08."
-branch_status: open
+branch_status: merged
 created_at: 2026-07-08
-verified_at: null
-archived: false
+verified_at: "2026-07-08"
+archived: true
 direct_override: null
 build_command: null
 verify_command: null

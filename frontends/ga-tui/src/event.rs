@@ -73,6 +73,7 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
+    /// Create a new event handler with the given event sender and tick rate
     pub fn new(tx: mpsc::Sender<AppEvent>, tick_rate: Duration) -> Self {
         Self { tx, tick_rate }
     }

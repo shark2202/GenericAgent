@@ -23,8 +23,27 @@ pub enum IpcCommand {
     ApprovalApprove { session_id: String, approval_id: String },
     /// Reject a pending tool call
     ApprovalReject { session_id: String, approval_id: String },
+    // ── Goal management (I1 fix: was missing) ──
+    /// List all goals
+    GoalList,
+    /// Propose a new goal
+    GoalPropose {
+        title: String,
+        description: Option<String>,
+        priority: Option<u32>,
+        budget: Option<u32>,
+        timeout: Option<u32>,
+    },
     /// Get goal state
     GoalGet { goal_id: String },
+    /// Confirm a proposed goal
+    GoalConfirm { goal_id: String },
+    /// Start running a confirmed goal
+    GoalRun { goal_id: String },
+    /// Pause a running goal
+    GoalPause { goal_id: String },
+    /// Send user input text to a running session
+    SessionInput { session_id: String, text: String },
 }
 
 /// IPC client connecting to ga-core daemon
@@ -34,6 +53,7 @@ pub struct IpcClient {
 }
 
 impl IpcClient {
+    /// Create a new IPC client with the given socket path and message sender
     pub fn new(socket_path: PathBuf, tx: mpsc::Sender<IpcMessage>) -> Self {
         Self { socket_path, tx }
     }

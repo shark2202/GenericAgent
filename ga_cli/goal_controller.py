@@ -2,9 +2,9 @@
 """
 ga_cli/goal_controller.py - Goal lifecycle state machine + SQLite persistence
 
-State machine: proposed -> confirmed -> running -> done | failed | budget-exhausted | timeout
+State machine: proposed -> confirmed -> running -> done | failed | budget_exhausted | timeout | paused
 Features: confirm-token, max_concurrent_runners budget, max_duration timeout,
-          deliverable aggregation, cross-restart recovery.
+          pause/resume, deliverable aggregation, cross-restart recovery.
 """
 import sqlite3
 import uuid
@@ -13,10 +13,16 @@ import json
 import threading
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
 log = logging.getLogger(__name__)
+
+
+def _now_iso() -> str:
+    """Current UTC time as ISO8601 string, matching Rust's serde serialization."""
+    return datetime.now(timezone.utc).isoformat()
 
 # ── State Machine ──────────────────────────────────────────────
 
@@ -24,9 +30,10 @@ class GoalState(str, Enum):
     PROPOSED = "proposed"
     CONFIRMED = "confirmed"
     RUNNING = "running"
+    PAUSED = "paused"
     DONE = "done"
     FAILED = "failed"
-    BUDGET_EXHAUSTED = "budget-exhausted"
+    BUDGET_EXHAUSTED = "budget_exhausted"  # snake_case to match Rust serde
     TIMEOUT = "timeout"
 
     @classmethod
@@ -41,7 +48,8 @@ class GoalState(str, Enum):
 VALID_TRANSITIONS = {
     GoalState.PROPOSED: {GoalState.CONFIRMED},
     GoalState.CONFIRMED: {GoalState.RUNNING},
-    GoalState.RUNNING: {GoalState.DONE, GoalState.FAILED, GoalState.BUDGET_EXHAUSTED, GoalState.TIMEOUT},
+    GoalState.RUNNING: {GoalState.DONE, GoalState.FAILED, GoalState.BUDGET_EXHAUSTED, GoalState.TIMEOUT, GoalState.PAUSED},
+    GoalState.PAUSED: {GoalState.RUNNING},
 }
 
 class InvalidTransition(Exception):
@@ -70,9 +78,9 @@ class Goal:
     max_duration: Optional[float] = None  # seconds, None = unlimited
     confirm_token: Optional[str] = None
     confirm_token_expires: Optional[float] = None  # unix timestamp
-    created_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    finished_at: Optional[float] = None
+    created_at: str = field(default_factory=_now_iso)
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
     active_runners: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -87,9 +95,9 @@ class Goal:
             )
         self.state = target
         if target == GoalState.RUNNING:
-            self.started_at = time.time()
+            self.started_at = _now_iso()
         if target.is_terminal():
-            self.finished_at = time.time()
+            self.finished_at = _now_iso()
 
 
 @dataclass
@@ -97,7 +105,7 @@ class GoalDeliverable:
     goal_id: str = ""
     content: str = ""
     format: str = "text"  # "text" or "json"
-    created_at: float = field(default_factory=time.time)
+    created_at: str = field(default_factory=_now_iso)
     session_summaries: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -114,9 +122,9 @@ CREATE TABLE IF NOT EXISTS goals (
     max_duration REAL,
     confirm_token TEXT,
     confirm_token_expires REAL,
-    created_at REAL NOT NULL,
-    started_at REAL,
-    finished_at REAL,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
     active_runners INTEGER NOT NULL DEFAULT 0,
     metadata TEXT NOT NULL DEFAULT '{}'
 );
@@ -125,7 +133,7 @@ CREATE TABLE IF NOT EXISTS goal_deliverables (
     goal_id TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
     format TEXT NOT NULL DEFAULT 'text',
-    created_at REAL NOT NULL,
+    created_at TEXT NOT NULL,
     session_summaries TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (goal_id),
     FOREIGN KEY (goal_id) REFERENCES goals(id)
@@ -135,8 +143,8 @@ CREATE TABLE IF NOT EXISTS goal_sessions (
     goal_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    created_at REAL NOT NULL,
-    finished_at REAL,
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
     final_answer TEXT,
     PRIMARY KEY (goal_id, session_id),
     FOREIGN KEY (goal_id) REFERENCES goals(id)
@@ -267,14 +275,14 @@ class GoalStore:
             """INSERT OR IGNORE INTO goal_sessions
                (goal_id, session_id, status, created_at)
                VALUES (?, ?, 'pending', ?)""",
-            (goal_id, session_id, time.time())
+            (goal_id, session_id, _now_iso())
         )
         conn.commit()
 
     def update_session(self, goal_id: str, session_id: str,
                        status: str, final_answer: Optional[str] = None) -> None:
         conn = self._get_conn()
-        finished_at = time.time() if status in ('completed', 'failed', 'interrupted') else None
+        finished_at = _now_iso() if status in ('completed', 'failed', 'interrupted') else None
         conn.execute(
             """UPDATE goal_sessions SET status=?, finished_at=?, final_answer=?
                WHERE goal_id=? AND session_id=?""",
@@ -303,6 +311,10 @@ class GoalStore:
     def get_running_goals(self) -> List[Goal]:
         """Get all goals in running state (for recovery after restart)."""
         return self.list_goals(state_filter=GoalState.RUNNING)
+
+    def get_paused_goals(self) -> List[Goal]:
+        """Get all goals in paused state (for recovery after restart)."""
+        return self.list_goals(state_filter=GoalState.PAUSED)
 
 
 # ── Goal Controller ────────────────────────────────────────────
@@ -398,7 +410,7 @@ class GoalController:
         return goal
 
     def mark_budget_exhausted(self, goal_id: str) -> Goal:
-        """Mark a running goal as budget-exhausted."""
+        """Mark a running goal as budget_exhausted."""
         goal = self._get_running_goal(goal_id)
         goal.transition_to(GoalState.BUDGET_EXHAUSTED)
         self.store.save_goal(goal)
@@ -413,6 +425,29 @@ class GoalController:
         self.store.save_goal(goal)
         self._cancel_timer(goal_id)
         self._finalize_deliverable(goal_id)
+        return goal
+
+    def pause(self, goal_id: str) -> Goal:
+        """Pause a running goal. Cancels timeout timer; resume to continue."""
+        goal = self._get_running_goal(goal_id)
+        goal.transition_to(GoalState.PAUSED)
+        self.store.save_goal(goal)
+        self._cancel_timer(goal_id)
+        log.info(f"Goal paused: {goal_id}")
+        return goal
+
+    def resume(self, goal_id: str) -> Goal:
+        """Resume a paused goal. Restarts timeout timer with remaining duration."""
+        goal = self._get_paused_goal(goal_id)
+        goal.transition_to(GoalState.RUNNING)
+        self.store.save_goal(goal)
+        if goal.max_duration and goal.started_at:
+            started = datetime.fromisoformat(goal.started_at)
+            elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+            remaining = goal.max_duration - elapsed
+            if remaining > 0:
+                self._start_timeout_timer(goal_id, remaining)
+        log.info(f"Goal resumed: {goal_id}")
         return goal
 
     # ── Budget ──
@@ -499,13 +534,13 @@ class GoalController:
     # ── Recovery ──
 
     def recover(self) -> List[Goal]:
-        """Recover running goals after a restart. Re-applies timeout timers."""
-        running = self.store.get_running_goals()
+        """Recover running and paused goals after a restart. Re-applies timeout timers for running goals."""
         recovered = []
-        for goal in running:
-            # Check if already timed out
+        # Recover running goals - re-apply timeout timers
+        for goal in self.store.get_running_goals():
             if goal.max_duration and goal.started_at:
-                elapsed = time.time() - goal.started_at
+                started = datetime.fromisoformat(goal.started_at)
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
                 remaining = goal.max_duration - elapsed
                 if remaining <= 0:
                     self.mark_timeout(goal.id)
@@ -513,7 +548,11 @@ class GoalController:
                 else:
                     self._start_timeout_timer(goal.id, remaining)
             recovered.append(goal)
-            log.info(f"Recovered goal: {goal.id}")
+            log.info(f"Recovered running goal: {goal.id}")
+        # Recover paused goals - no timer needed, they stay paused
+        for goal in self.store.get_paused_goals():
+            recovered.append(goal)
+            log.info(f"Recovered paused goal: {goal.id}")
         return recovered
 
     # ── Internal ──
@@ -524,6 +563,14 @@ class GoalController:
             raise ValueError(f"Goal not found: {goal_id}")
         if goal.state != GoalState.RUNNING:
             raise InvalidTransition(f"Goal is {goal.state.value}, not running")
+        return goal
+
+    def _get_paused_goal(self, goal_id: str) -> Goal:
+        goal = self.store.get_goal(goal_id)
+        if goal is None:
+            raise ValueError(f"Goal not found: {goal_id}")
+        if goal.state != GoalState.PAUSED:
+            raise InvalidTransition(f"Goal is {goal.state.value}, not paused")
         return goal
 
     def _start_timeout_timer(self, goal_id: str, duration: float) -> None:

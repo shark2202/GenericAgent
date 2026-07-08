@@ -43,11 +43,11 @@ pub fn render(f: &mut Frame, app: &App) {
 
     // Approval popup for active pane
     if let Some(pane) = app.panes.get(app.active_pane) {
-        if pane.pending_approval.is_some() {
+        if let Some(ref approval) = pane.pending_approval {
             crate::approval::render_approval_popup(
                 f,
                 centered_rect(size, 60, 40),
-                pane.pending_approval.as_ref().unwrap(),
+                approval,
                 &app.theme,
             );
         }

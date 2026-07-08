@@ -2,7 +2,7 @@
 
 use crate::config::Config;
 use crate::event::IpcMessage;
-use crate::ipc::IpcClient;
+use crate::ipc::{IpcClient, IpcCommand};
 use crate::pane::{LineStyle, Pane, PaneStatus, RunnerKind};
 use crate::theme::Theme;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent};
@@ -31,9 +31,12 @@ pub struct App {
     pub ipc_client: Option<IpcClient>,
     pub goal_summary: Option<String>,
     pub goals: Vec<crate::event::GoalSummary>,
+    /// Pending IPC commands to be sent by the async event loop
+    pub pending_commands: Vec<IpcCommand>,
 }
 
 impl App {
+    /// Create a new App instance with the given configuration
     pub fn new(config: Config) -> Self {
         let theme = Theme::by_name(&config.theme);
         Self {
@@ -51,6 +54,7 @@ impl App {
             ipc_client: None,
             goal_summary: None,
             goals: Vec::new(),
+            pending_commands: Vec::new(),
         }
     }
 
@@ -331,8 +335,11 @@ impl App {
         }
         if let Some(pane) = self.panes.get_mut(self.active_pane) {
             pane.push_line(format!("> {}", self.input_buffer), LineStyle::Normal);
+            // Queue IPC command for the async event loop to send
+            let session_id = pane.session_id.clone();
+            let text = self.input_buffer.clone();
+            self.pending_commands.push(IpcCommand::SessionInput { session_id, text });
         }
-        // TODO: send to IPC
         self.input_buffer.clear();
         self.mode = InputMode::Normal;
     }
@@ -349,6 +356,12 @@ impl App {
             }
         }
         self.command_text.clear();
+    }
+
+    /// Drain pending IPC commands, returning them for the async event loop to send.
+    /// Called after each event handling cycle in main.rs.
+    pub fn drain_commands(&mut self) -> Vec<IpcCommand> {
+        std::mem::take(&mut self.pending_commands)
     }
 }
 

@@ -3,6 +3,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+/// Application configuration loaded from TOML file
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// Core daemon socket path (default: $XDG_RUNTIME_DIR/ga/core.sock)
@@ -49,6 +50,7 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Load configuration from the default config file path, creating defaults if missing
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let config_path = Self::config_file_path();
         if config_path.exists() {
