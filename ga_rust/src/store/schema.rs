@@ -43,13 +43,17 @@ impl<'a> Schema<'a> {
 
             CREATE TABLE IF NOT EXISTS approvals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                command TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions(id),
+                tool_name TEXT,
+                command TEXT,
+                risk_level TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
-                created_at TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 resolved_at TEXT,
-                FOREIGN KEY (session_id) REFERENCES sessions(id)
+                resolver_origin TEXT
             );
+            CREATE INDEX IF NOT EXISTS idx_approvals_pending ON approvals(status, session_id);
 
             CREATE TABLE IF NOT EXISTS runner_kinds (
                 kind TEXT PRIMARY KEY,

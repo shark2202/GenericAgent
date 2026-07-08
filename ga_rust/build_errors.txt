@@ -1,0 +1,425 @@
+    Checking ga v0.1.0 (D:\GenericAgent\temp\e2e_worktrees\ga-core-cli\ga_rust)
+error[E0432]: unresolved imports `crate::core::approval::CallInfo`, `crate::core::approval::CallDecision`
+ --> src\core\orchestrator.rs:7:45
+  |
+7 | use crate::core::approval::{ApprovalPolicy, CallInfo, CallDecision};
+  |                                             ^^^^^^^^  ^^^^^^^^^^^^ no `CallDecision` in `core::approval`
+  |                                             |
+  |                                             no `CallInfo` in `core::approval`
+
+error[E0432]: unresolved imports `approval::CallInfo`, `approval::CallDecision`
+ --> src\core\mod.rs:9:36
+  |
+9 | pub use approval::{ApprovalPolicy, CallInfo, CallDecision, CommandRule};
+  |                                    ^^^^^^^^  ^^^^^^^^^^^^ no `CallDecision` in `core::approval`
+  |                                    |
+  |                                    no `CallInfo` in `core::approval`
+
+error[E0425]: cannot find type `CallInfo` in this scope
+  --> src\core\approval.rs:81:35
+   |
+81 |     pub fn classify(&self, info: &CallInfo) -> CallDecision {
+   |                                   ^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find type `CallDecision` in this scope
+  --> src\core\approval.rs:81:48
+   |
+81 |     pub fn classify(&self, info: &CallInfo) -> CallDecision {
+   |                                                ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find type `CallInfo` in this scope
+   --> src\core\approval.rs:101:35
+    |
+101 |     pub fn evaluate(&self, info: &CallInfo) -> CallDecision {
+    |                                   ^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find type `CallDecision` in this scope
+   --> src\core\approval.rs:101:48
+    |
+101 |     pub fn evaluate(&self, info: &CallInfo) -> CallDecision {
+    |                                                ^^^^^^^^^^^^ not found in this scope
+
+warning: unused imports: `Approval` and `RiskLevel`
+ --> src\core\orchestrator.rs:6:20
+  |
+6 | use crate::store::{Approval, Origin, RiskLevel};
+  |                    ^^^^^^^^          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Origin`
+ --> src\core\approval.rs:3:20
+  |
+3 | use crate::store::{Origin, RiskLevel};
+  |                    ^^^^^^
+
+warning: unused import: `config::AppConfig`
+ --> src\core\mod.rs:7:9
+  |
+7 | pub use config::AppConfig;
+  |         ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `PidFile`
+ --> src\core\mod.rs:8:26
+  |
+8 | pub use daemon::{Daemon, PidFile};
+  |                          ^^^^^^^
+
+warning: unused imports: `ApprovalPolicy` and `CommandRule`
+ --> src\core\mod.rs:9:20
+  |
+9 | pub use approval::{ApprovalPolicy, CallInfo, CallDecision, CommandRule};
+  |                    ^^^^^^^^^^^^^^                          ^^^^^^^^^^^
+
+warning: unused import: `anyhow::Result`
+ --> src\ipc\event_stream.rs:1:5
+  |
+1 | use anyhow::Result;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `Context`
+ --> src\ipc\server.rs:1:20
+  |
+1 | use anyhow::{bail, Context, Result};
+  |                    ^^^^^^^
+
+warning: unused imports: `ApprovalRequest`, `ApprovalResponse`, `EventKind`, `IpcMessage`, and `RiskLevel`
+ --> src\ipc\mod.rs:6:20
+  |
+6 | pub use protocol::{IpcMessage, EventKind, ApprovalRequest, ApprovalResponse, RiskLevel};
+  |                    ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `pty::PtySession`
+ --> src\ipc\mod.rs:7:9
+  |
+7 | pub use pty::PtySession;
+  |         ^^^^^^^^^^^^^^^
+
+warning: unused import: `event_stream::EventStream`
+ --> src\ipc\mod.rs:8:9
+  |
+8 | pub use event_stream::EventStream;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `DaemonCommand`, `DaemonResponse`, `DefaultIpcHandler`, `IpcClient`, `IpcHandler`, `IpcServer`, and `SessionInfo`
+ --> src\ipc\mod.rs:9:18
+  |
+9 | pub use server::{IpcServer, IpcClient, IpcHandler, DefaultIpcHandler, DaemonCommand, DaemonResponse, SessionInfo};
+  |                  ^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> src\runner\subprocess_adapter.rs:3:5
+  |
+3 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `RunnerOutput` and `RunnerStatus`
+ --> src\runner\mod.rs:6:44
+  |
+6 | pub use trait_def::{Runner, RunnerContext, RunnerOutput, RunnerStatus};
+  |                                            ^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `ga_adapter::GaRunner`
+ --> src\runner\mod.rs:7:9
+  |
+7 | pub use ga_adapter::GaRunner;
+  |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `subprocess_adapter::SubprocessRunner`
+ --> src\runner\mod.rs:8:9
+  |
+8 | pub use subprocess_adapter::SubprocessRunner;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `DateTime`
+ --> src\store\models.rs:2:14
+  |
+2 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^
+
+error[E0308]: mismatched types
+   --> src\cli\commands.rs:234:53
+    |
+234 |                     let resolver = Origin::from_str(origin)
+    |                                    ---------------- ^^^^^^ expected `&str`, found `String`
+    |                                    |
+    |                                    arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> src\store\models.rs:90:12
+    |
+ 90 |     pub fn from_str(s: &str) -> Option<Self> {
+    |            ^^^^^^^^ -------
+help: consider borrowing here
+    |
+234 |                     let resolver = Origin::from_str(&origin)
+    |                                                     +
+
+error[E0614]: type `i64` cannot be dereferenced
+   --> src\cli\commands.rs:236:56
+    |
+236 |                     let output = core.approval_approve(*id, &resolver)?;
+    |                                                        ^^^ can't be dereferenced
+
+error[E0308]: mismatched types
+   --> src\cli\commands.rs:240:53
+    |
+240 |                     let resolver = Origin::from_str(origin)
+    |                                    ---------------- ^^^^^^ expected `&str`, found `String`
+    |                                    |
+    |                                    arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> src\store\models.rs:90:12
+    |
+ 90 |     pub fn from_str(s: &str) -> Option<Self> {
+    |            ^^^^^^^^ -------
+help: consider borrowing here
+    |
+240 |                     let resolver = Origin::from_str(&origin)
+    |                                                     +
+
+error[E0614]: type `i64` cannot be dereferenced
+   --> src\cli\commands.rs:242:55
+    |
+242 |                     let output = core.approval_reject(*id, &resolver)?;
+    |                                                       ^^^ can't be dereferenced
+
+error[E0614]: type `i64` cannot be dereferenced
+   --> src\cli\commands.rs:246:53
+    |
+246 |                     let output = core.approval_view(*id)?;
+    |                                                     ^^^ can't be dereferenced
+
+error[E0614]: type `bool` cannot be dereferenced
+   --> src\cli\commands.rs:250:35
+    |
+250 |                     let enabled = *enable && !*disable;
+    |                                   ^^^^^^^ can't be dereferenced
+
+error[E0614]: type `bool` cannot be dereferenced
+   --> src\cli\commands.rs:250:47
+    |
+250 |                     let enabled = *enable && !*disable;
+    |                                               ^^^^^^^^ can't be dereferenced
+
+error[E0614]: type `bool` cannot be dereferenced
+   --> src\cli\commands.rs:255:24
+    |
+255 |                     if *show {
+    |                        ^^^^^ can't be dereferenced
+
+error[E0599]: no method named `approval_show_allowlist` found for struct `Orchestrator` in the current scope
+   --> src\cli\commands.rs:256:43
+    |
+256 |                         let output = core.approval_show_allowlist()?;
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src\core\orchestrator.rs:9:1
+    |
+  9 | pub struct Orchestrator {
+    | ----------------------- method `approval_show_allowlist` not found for this struct
+    |
+help: there is a method `approval_list` with a similar name, but with different arguments
+   --> src\core\orchestrator.rs:175:5
+    |
+175 |     pub fn approval_list(&self, session_id: Option<&str>) -> Result<String> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no variant, associated function, or constant named `Tool` found for enum `models::Origin` in the current scope
+   --> src\core\orchestrator.rs:159:32
+    |
+159 |             Some(_) => Origin::Tool,
+    |                                ^^^^ variant, associated function, or constant not found in `models::Origin`
+    |
+   ::: src\store\models.rs:66:1
+    |
+ 66 | pub enum Origin {
+    | --------------- variant, associated function, or constant `Tool` not found for this enum
+
+error[E0599]: no variant, associated function, or constant named `Command` found for enum `models::Origin` in the current scope
+   --> src\core\orchestrator.rs:160:29
+    |
+160 |             None => Origin::Command,
+    |                             ^^^^^^^ variant, associated function, or constant not found in `models::Origin`
+    |
+   ::: src\store\models.rs:66:1
+    |
+ 66 | pub enum Origin {
+    | --------------- variant, associated function, or constant `Command` not found for this enum
+
+error[E0599]: no associated function or constant named `write_pid_file` found for struct `Daemon` in the current scope
+   --> src\core\orchestrator.rs:263:21
+    |
+263 |             Daemon::write_pid_file(&pid_file, std::process::id(), 0)?;
+    |                     ^^^^^^^^^^^^^^ associated function or constant not found in `Daemon`
+    |
+   ::: src\core\daemon.rs:100:1
+    |
+100 | pub struct Daemon {
+    | ----------------- associated function or constant `write_pid_file` not found for this struct
+    |
+note: if you're trying to build a new `Daemon`, consider using `Daemon::new` which returns `Result<Daemon, anyhow::Error>`
+   --> src\core\daemon.rs:106:5
+    |
+106 |     pub fn new(ga_root: &str) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `get_status` found for struct `Daemon` in the current scope
+   --> src\core\orchestrator.rs:266:34
+    |
+266 |             let status = Daemon::get_status(&data_dir)?;
+    |                                  ^^^^^^^^^^ associated function or constant not found in `Daemon`
+    |
+   ::: src\core\daemon.rs:100:1
+    |
+100 | pub struct Daemon {
+    | ----------------- associated function or constant `get_status` not found for this struct
+    |
+note: if you're trying to build a new `Daemon`, consider using `Daemon::new` which returns `Result<Daemon, anyhow::Error>`
+   --> src\core\daemon.rs:106:5
+    |
+106 |     pub fn new(ga_root: &str) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `print_status` with a similar name, but with different arguments
+   --> src\core\daemon.rs:246:5
+    |
+246 |     pub fn print_status(&self) -> Result<()> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `find_running` found for struct `Daemon` in the current scope
+   --> src\core\orchestrator.rs:284:23
+    |
+284 |         match Daemon::find_running(&data_dir)? {
+    |                       ^^^^^^^^^^^^ associated function or constant not found in `Daemon`
+    |
+   ::: src\core\daemon.rs:100:1
+    |
+100 | pub struct Daemon {
+    | ----------------- associated function or constant `find_running` not found for this struct
+    |
+note: if you're trying to build a new `Daemon`, consider using `Daemon::new` which returns `Result<Daemon, anyhow::Error>`
+   --> src\core\daemon.rs:106:5
+    |
+106 |     pub fn new(ga_root: &str) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `send_shutdown` found for struct `Daemon` in the current scope
+   --> src\core\orchestrator.rs:286:25
+    |
+286 |                 Daemon::send_shutdown(&data_dir, pid)?;
+    |                         ^^^^^^^^^^^^^ associated function or constant not found in `Daemon`
+    |
+   ::: src\core\daemon.rs:100:1
+    |
+100 | pub struct Daemon {
+    | ----------------- associated function or constant `send_shutdown` not found for this struct
+    |
+note: if you're trying to build a new `Daemon`, consider using `Daemon::new` which returns `Result<Daemon, anyhow::Error>`
+   --> src\core\daemon.rs:106:5
+    |
+106 |     pub fn new(ga_root: &str) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `get_status` found for struct `Daemon` in the current scope
+   --> src\core\orchestrator.rs:296:20
+    |
+296 |         Ok(Daemon::get_status(&data_dir)?)
+    |                    ^^^^^^^^^^ associated function or constant not found in `Daemon`
+    |
+   ::: src\core\daemon.rs:100:1
+    |
+100 | pub struct Daemon {
+    | ----------------- associated function or constant `get_status` not found for this struct
+    |
+note: if you're trying to build a new `Daemon`, consider using `Daemon::new` which returns `Result<Daemon, anyhow::Error>`
+   --> src\core\daemon.rs:106:5
+    |
+106 |     pub fn new(ga_root: &str) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `print_status` with a similar name, but with different arguments
+   --> src\core\daemon.rs:246:5
+    |
+246 |     pub fn print_status(&self) -> Result<()> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> src\core\approval.rs:82:27
+   |
+82 |         let risk = if let Some(ref tool) = info.tool_name {
+   |                           ^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+note: required by a bound in `Some`
+  --> /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\option.rs:608:4
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> src\core\approval.rs:84:23
+   |
+84 |         } else if let Some(ref cmd) = info.command {
+   |                       ^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+note: required by a bound in `Some`
+  --> /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\option.rs:608:4
+
+error[E0308]: mismatched types
+  --> src\core\approval.rs:90:30
+   |
+90 |         if self.should_block(risk) {
+   |                 ------------ ^^^^ expected `&RiskLevel`, found `RiskLevel`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+note: method defined here
+  --> src\core\approval.rs:69:12
+   |
+69 |     pub fn should_block(&self, risk: &RiskLevel) -> bool {
+   |            ^^^^^^^^^^^^        ----------------
+help: consider borrowing here
+   |
+90 |         if self.should_block(&risk) {
+   |                              +
+
+warning: unused import: `Runner`
+ --> src\core\orchestrator.rs:4:21
+  |
+4 | use crate::runner::{Runner, RunnerContext, RunnerRegistry};
+  |                     ^^^^^^
+
+warning: unused variable: `store`
+   --> src\core\daemon.rs:287:36
+    |
+287 |     pub fn recover_sessions(&self, store: &Store) -> Result<()> {
+    |                                    ^^^^^ help: if this is intentional, prefix it with an underscore: `_store`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `handler`
+  --> src\ipc\server.rs:56:32
+   |
+56 |     pub async fn run<H>(&self, handler: H, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>)
+   |                                ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_handler`
+
+warning: unused variable: `sid`
+   --> src\store\models.rs:300:36
+    |
+300 |         let mut stmt = if let Some(sid) = session_id {
+    |                                    ^^^ help: if this is intentional, prefix it with an underscore: `_sid`
+
+error[E0433]: cannot find type `CallDecision` in this scope
+  --> src\core\approval.rs:91:13
+   |
+91 |             CallDecision::RequiresApproval {
+   |             ^^^^^^^^^^^^ use of undeclared type `CallDecision`
+
+error[E0433]: cannot find type `CallDecision` in this scope
+  --> src\core\approval.rs:96:13
+   |
+96 |             CallDecision::AutoApproved { risk: risk.clone() }
+   |             ^^^^^^^^^^^^ use of undeclared type `CallDecision`
+
+Some errors have detailed explanations: E0277, E0308, E0425, E0432, E0433, E0599, E0614.
+For more information about an error, try `rustc --explain E0277`.
+warning: `ga` (bin "ga") generated 20 warnings
+error: could not compile `ga` (bin "ga") due to 27 previous errors; 20 warnings emitted
