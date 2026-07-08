@@ -161,13 +161,13 @@ impl Daemon {
             bail!("Another daemon is already running (PID {})", info.pid);
         }
 
-        // Init tracing for daemon process
-        tracing_subscriber::fmt()
+        // Init tracing for daemon process (try_init to avoid panic if already set by main)
+        let _ = tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
             )
-            .init();
+            .try_init();
 
         let pid = std::process::id();
         let socket_path = self.socket_path();
