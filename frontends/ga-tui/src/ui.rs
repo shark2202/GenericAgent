@@ -42,15 +42,15 @@ pub fn render(f: &mut Frame, app: &App) {
     }
 
     // Approval popup for active pane
-    if let Some(pane) = app.panes.get(app.active_pane) {
-        if let Some(ref approval) = pane.pending_approval {
-            crate::approval::render_approval_popup(
-                f,
-                centered_rect(size, 60, 40),
-                approval,
-                &app.theme,
-            );
-        }
+    if let Some(pane) = app.panes.get(app.active_pane)
+        && let Some(ref approval) = pane.pending_approval
+    {
+        crate::approval::render_approval_popup(
+            f,
+            centered_rect(size, 60, 40),
+            approval,
+            &app.theme,
+        );
     }
 }
 
@@ -103,8 +103,9 @@ fn render_tab_bar(f: &mut Frame, area: Rect, app: &App) {
             };
             Line::from(vec![
                 Span::styled(status_icon, Style::default().fg(status_color)),
+                Span::styled(format!("{} ", pane.runner.icon()), Style::default().fg(status_color)),
                 Span::styled(
-                    format!(" {}:{} ", pane.runner, pane.session_id),
+                    format!("{}:{} ", pane.runner, pane.session_id),
                     style,
                 ),
             ])

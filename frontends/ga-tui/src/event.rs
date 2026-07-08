@@ -40,6 +40,10 @@ pub enum IpcMessage {
         session_id: String,
         approved: bool,
     },
+    /// Daemon reattaches a previously detached session (openspec §3.3)
+    SessionReattach {
+        session_id: String,
+    },
     // ── Goal events from daemon ──
     GoalUpdate {
         goal_id: String,

@@ -2,7 +2,7 @@
 //! Uses named pipes on Windows, Unix sockets on Unix
 
 use crate::event::IpcMessage;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -19,6 +19,8 @@ pub enum IpcCommand {
     SessionAttach { session_id: String },
     /// Detach from a session
     SessionDetach { session_id: String },
+    /// Reattach a previously detached session (openspec §3.3)
+    SessionReattach { session_id: String },
     /// Approve a pending tool call
     ApprovalApprove { session_id: String, approval_id: String },
     /// Reject a pending tool call
@@ -98,7 +100,7 @@ impl IpcClient {
 }
 
 /// Connect to the IPC socket (named pipe on Windows, Unix socket on Unix)
-async fn connect_socket(socket_path: &PathBuf) -> anyhow::Result<tokio::io::BufWriter<IpcStream>> {
+async fn connect_socket(socket_path: &Path) -> anyhow::Result<tokio::io::BufWriter<IpcStream>> {
     let stream = IpcStream::connect(socket_path).await?;
     Ok(tokio::io::BufWriter::new(stream))
 }
@@ -112,7 +114,7 @@ enum IpcStream {
 }
 
 impl IpcStream {
-    async fn connect(path: &PathBuf) -> anyhow::Result<Self> {
+    async fn connect(path: &Path) -> anyhow::Result<Self> {
         #[cfg(windows)]
         {
             // Named pipe path format: \\.\pipe\ga-core
@@ -188,7 +190,7 @@ impl tokio::io::AsyncWrite for IpcStream {
 }
 
 async fn try_connect_and_read(
-    socket_path: &PathBuf,
+    socket_path: &Path,
     tx: &mpsc::Sender<IpcMessage>,
 ) -> anyhow::Result<()> {
     let stream = IpcStream::connect(socket_path).await?;

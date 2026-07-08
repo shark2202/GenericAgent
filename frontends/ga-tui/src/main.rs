@@ -85,10 +85,10 @@ async fn run_app(
 
             // Drain and send pending IPC commands
             for cmd in app.drain_commands() {
-                if let Some(ref ipc) = app.ipc_client {
-                    if let Err(e) = ipc.send_command(cmd).await {
-                        tracing::warn!("IPC send failed: {e}");
-                    }
+                if let Some(ref ipc) = app.ipc_client
+                    && let Err(e) = ipc.send_command(cmd).await
+                {
+                    tracing::warn!("IPC send failed: {e}");
                 }
             }
         }

@@ -40,7 +40,7 @@ pub fn render_approval_popup(f: &mut Frame, area: Rect, req: &ApprovalRequest, t
         Line::from(vec![
             Span::styled(format!("{risk_icon} Risk: "), Style::default().fg(risk_color)),
             Span::styled(
-                format!("{}", req.risk_level.as_str()),
+                req.risk_level.as_str(),
                 Style::default().fg(risk_color).add_modifier(Modifier::BOLD),
             ),
         ]),

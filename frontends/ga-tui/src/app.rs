@@ -5,7 +5,7 @@ use crate::event::IpcMessage;
 use crate::ipc::{IpcClient, IpcCommand};
 use crate::pane::{LineStyle, Pane, PaneStatus, RunnerKind};
 use crate::theme::Theme;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 
 /// Input mode for the TUI (matches herdr-style prefix/input/normal)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,7 +152,7 @@ impl App {
                     pane.scroll_down(20);
                 }
             }
-            KeyCode::Char(c) if c >= '1' && c <= '9' => {
+            KeyCode::Char(c) if ('1'..='9').contains(&c) => {
                 let idx = (c as usize) - '1' as usize;
                 if idx < self.panes.len() {
                     self.active_pane = idx;
@@ -199,9 +199,28 @@ impl App {
         }
     }
 
-    /// Handle mouse event
-    pub fn handle_mouse(&mut self, _mouse: MouseEvent) {
-        // TODO: implement mouse handling (pane switching, scrolling, click)
+    /// Handle mouse event (scroll, click-to-switch-pane)
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                if let Some(pane) = self.panes.get_mut(self.active_pane) {
+                    pane.scroll_up(3);
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(pane) = self.panes.get_mut(self.active_pane) {
+                    pane.scroll_down(3);
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left) if mouse.row == 0 && !self.panes.is_empty() => {
+                let tab_width = (self.size.0 as usize) / self.panes.len().max(1);
+                let idx = (mouse.column as usize) / tab_width.max(1);
+                if idx < self.panes.len() {
+                    self.active_pane = idx;
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Handle terminal resize
@@ -249,6 +268,13 @@ impl App {
                         "detached" => PaneStatus::Detached,
                         _ => PaneStatus::Working,
                     };
+                }
+            }
+            IpcMessage::SessionReattach { session_id } => {
+                // Daemon requests reattach of a detached session (openspec §3.3)
+                if let Some(pane) = self.panes.iter_mut().find(|p| p.session_id == session_id) {
+                    pane.status = PaneStatus::Working;
+                    self.active_pane = self.panes.iter().position(|p| p.session_id == session_id).unwrap_or(self.active_pane);
                 }
             }
             IpcMessage::ApprovalNeeded { session_id, approval } => {
@@ -319,10 +345,10 @@ impl App {
     }
 
     fn attach_session(&mut self) {
-        if let Some(pane) = self.panes.get_mut(self.active_pane) {
-            if pane.status == PaneStatus::Detached {
-                pane.status = PaneStatus::Working;
-            }
+        if let Some(pane) = self.panes.get_mut(self.active_pane)
+            && pane.status == PaneStatus::Detached
+        {
+            pane.status = PaneStatus::Working;
         }
     }
 

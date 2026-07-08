@@ -26,6 +26,24 @@ impl std::fmt::Display for RunnerKind {
     }
 }
 
+impl RunnerKind {
+    /// Agent-agnostic icon for tab bar rendering (openspec §3.4)
+    pub fn icon(&self) -> &'static str {
+        match self {
+            RunnerKind::Ga => "🤖",
+            RunnerKind::Codex => "🔧",
+            RunnerKind::Claude => "🧠",
+            RunnerKind::Subprocess => "⚙",
+            RunnerKind::Custom(_) => "📦",
+        }
+    }
+
+    /// Whether this runner kind supports approval workflows
+    pub fn supports_approval(&self) -> bool {
+        matches!(self, RunnerKind::Ga | RunnerKind::Codex | RunnerKind::Claude)
+    }
+}
+
 /// Pane status
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneStatus {

@@ -59,3 +59,10 @@ BBS 第一帖必须包含以下四项：
 启动 worker：`start /b python <CodeRoot>/agentmain.py --reflect <CodeRoot>/reflect/agent_team_worker.py --base_url http://127.0.0.1:<PORT> --board_key <BOARD_KEY> --name hive-worker-1`。
 
 后续 worker 由 Goal Master 按需要增加（不能超过5个，一般任务2-4个足够）。
+
+## ⚠️ Worker 幻觉识别与处置
+
+Workers可能报告"任务完成"但实际0文件修改（幻觉）。识别与处置：
+1. **物理验证优先**：worker报告完成后，master必须用工具检查实际文件是否存在、是否被修改（不能只信worker文字）
+2. **关键信号**：worker说"cargo test pass"但项目目录无Cargo.toml → 幻觉；报告"67/67 tests pass"但0文件变更 → 幻觉
+3. **处置**：3次幻觉确认后，Master应请求用户干预或亲自执行收尾验证（SOP允许"紧急override时Master亲自执行"）
