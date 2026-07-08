@@ -1,8 +1,13 @@
-"""Skill loader: discover and catalog AGENT SKILLs from .agents/skills/ directories."""
+"""Skill loader: discover skills and sync to L1 memory index."""
 import os
 import re
+import shutil
 
 SKILL_FILE = "SKILL.md"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+SKILL_START_MARKER = '<!-- auto-skills-start -->'
+SKILL_END_MARKER = '<!-- auto-skills-end -->'
 
 
 def _parse_skill_frontmatter(skill_md_path):
@@ -51,17 +56,14 @@ def _scan_dir(skills_root):
     return catalog
 
 
-def get_skill_catalog(cwd_skills_root=None):
-    """Build a skill catalog string for system prompt injection.
-
-    Scans $HOME/.agents/skills/ (user-level) and $CWD/.agents/skills/ (project-level).
-    Project-level skills override user-level skills with the same name.
+def _discover_skills(cwd_skills_root=None):
+    """Discover all skills: user-level + project-level (project overrides same-name).
 
     Args:
         cwd_skills_root: Override CWD for testing. Defaults to os.getcwd().
 
     Returns:
-        Formatted catalog string, or empty string if no skills found.
+        {name: (description, abs_skill_md_path)} dict, possibly empty.
     """
     home = os.environ.get('HOME', '')
     user_root = os.path.join(home, '.agents', 'skills') if home else None
@@ -69,37 +71,90 @@ def get_skill_catalog(cwd_skills_root=None):
     project_root = os.path.join(cwd, '.agents', 'skills')
 
     catalog = {}
-
     if user_root:
         catalog.update(_scan_dir(user_root))
-
     catalog.update(_scan_dir(project_root))
+    return catalog
 
-    # Build skill catalog lines
-    lines = []
-    if catalog:
-        lines.append("## Available Skills")
-        lines.append("")
-        for name, (desc, path) in sorted(catalog.items()):
-            lines.append(f"- **{name}**: {desc} ({path})")
 
-    # Append MCP tools if available (parallel to skill index in system prompt).
-    # MCPClientManager is initialized in agentmain.py and exposed via a singleton
-    # get_instance() classmethod, so system-prompt injection works without a live
-    # agent reference. All MCP imports are guarded so GA runs without mcp installed.
+def _replace_between_markers(filepath, start_marker, end_marker, new_content):
+    """Replace content between start_marker and end_marker, preserving everything outside.
+
+    Boundary conditions:
+    - File does not exist -> create empty file then write new_content
+    - Markers not found -> append to file end
+    - Only start marker, no end -> replace from start to file end
+    """
     try:
-        from mcp_client import MCPClientManager
-        mgr = MCPClientManager.get_instance()
-        if mgr:
-            mcp_summary = mgr.get_tools_summary()
-            if mcp_summary:
-                if lines:
-                    lines.append("")  # blank separator between sections
-                lines.append(mcp_summary)
-    except Exception:
-        pass  # MCP not available, silently skip
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except FileNotFoundError:
+        content = ""
 
-    if not lines:
-        return ""
+    start_idx = content.find(start_marker)
+    end_idx = content.find(end_marker)
 
-    return "\n".join(lines) + "\n"
+    if start_idx == -1:
+        if content and not content.endswith('\n'):
+            content += '\n'
+        content += new_content + '\n'
+    else:
+        if end_idx == -1:
+            end_idx = len(content)
+        else:
+            end_idx += len(end_marker)
+        content = content[:start_idx] + new_content + content[end_idx:]
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+
+def sync_skills_to_l1(l1_path=None):
+    """Scan skill directories -> sync to L1 [Skills] section (between auto markers).
+
+    Preserves manual notes outside markers. Each line format:
+        <name>: <SKILL.md_abs_path>
+        <name>: <SKILL.md_abs_path> | <experience_file_path>  (when experience file exists)
+
+    Args:
+        l1_path: L1 file path override (for testing). Defaults to <script_dir>/memory/global_mem_insight.txt
+    """
+    l1_path = l1_path or os.path.join(script_dir, 'memory', 'global_mem_insight.txt')
+
+    catalog = _discover_skills()
+
+    entries = []
+    for name, (desc, skill_path) in sorted(catalog.items()):
+        exp_path = os.path.join(script_dir, 'memory', f'skill_exp_{name}.md')
+        if os.path.isfile(exp_path):
+            entries.append(f"{name}: {skill_path} | {exp_path}")
+        else:
+            entries.append(f"{name}: {skill_path}")
+
+    auto_block = f"{SKILL_START_MARKER}\n"
+    if entries:
+        auto_block += "\n".join(entries) + "\n"
+    auto_block += SKILL_END_MARKER
+
+    _replace_between_markers(l1_path, SKILL_START_MARKER, SKILL_END_MARKER, auto_block)
+
+
+def backup_and_patch_skill(skill_md_path, patch_content=None):
+    """opt-in: backup SKILL.md original before Agent patches it.
+
+    Requires GA_SKILL_PATCH_ENABLED=1 environment variable.
+    This function only handles backup; actual patch is done by Agent's file_patch tool.
+
+    Args:
+        skill_md_path: Absolute path to SKILL.md
+        patch_content: Expected patch content (currently unused, reserved for future validation)
+
+    Raises:
+        PermissionError: Environment variable not set
+    """
+    if os.environ.get('GA_SKILL_PATCH_ENABLED') != '1':
+        raise PermissionError("Skill patch requires GA_SKILL_PATCH_ENABLED=1")
+
+    bak_path = skill_md_path + '.bak'
+    if not os.path.exists(bak_path):
+        shutil.copy2(skill_md_path, bak_path)

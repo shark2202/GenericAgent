@@ -365,8 +365,8 @@ comet-build: /root/.agents/skills/comet-build/SKILL.md
 `related_sop` 是 Agent 自主写入的工作记忆字段（通过 `do_update_working_checkpoint`）。Agent 使用 Skill 时通过 `file_read` 读取 SKILL.md，路径自然出现在 `related_sop` 中。
 
 **验证点**：
-- [ ] 确认 `do_update_working_checkpoint` 接受 `related_sop` 字段且无硬编码过滤
-- [ ] 确认 Agent `file_read` SKILL.md 后路径可写入 `related_sop`
+- [x] 确认 `do_update_working_checkpoint` 接受 `related_sop` 字段且无硬编码过滤
+- [x] 确认 Agent `file_read` SKILL.md 后路径可写入 `related_sop`
 
 **结论**：无需改动 ga.py 工作记忆相关代码。
 
@@ -381,8 +381,8 @@ if self.handler and 'key_info' in self.handler.working:
 ```
 
 **验证点**：
-- [ ] 新 handler 继承旧 handler 的 `key_info`（含 Skill 使用上下文）
-- [ ] `related_sop` 是否也在继承范围内（检查 `working` dict 的传递逻辑）
+- [x] 新 handler 继承旧 handler 的 `key_info`（含 Skill 使用上下文）
+- [x] `related_sop` 是否也在继承范围内（检查 `working` dict 的传递逻辑）
 
 **结论**：无需改动，复用现有机制。
 
@@ -397,23 +397,23 @@ if self.handler and 'key_info' in self.handler.working:
 `do_start_long_term_update`（ga.py，约 line 508）返回 L0 规则 + 提取 prompt，指导 Agent 更新 L1/L2/L3。Skill 经验文件属于 L3。
 
 **验证点**：
-- [ ] L1 `[Skills]` 段已含经验文件路径指针
-- [ ] Agent 通过 L1 自然发现 `memory/skill_exp_<name>.md` 路径
-- [ ] Agent 通过标准 `file_patch` 写入经验文件
+- [x] L1 `[Skills]` 段已含经验文件路径指针
+- [x] Agent 通过 L1 自然发现 `memory/skill_exp_<name>.md` 路径
+- [x] Agent 通过标准 `file_patch` 写入经验文件
 
 **结论**：无需修改 `do_start_long_term_update`。
 
 #### Step 6.2 — 验证 Agent 能写入经验文件
 
 **验证点**：
-- [ ] Agent 决策流：L1 看到 `skill_exp_comet-open.md` 路径 → `file_read` 现有经验 → `file_patch` 追加新经验
-- [ ] 下次 `sync_skills_to_l1()` 自动检测新经验文件 → L1 条目从单路径变双路径
+- [x] Agent 决策流：L1 看到 `skill_exp_comet-open.md` 路径 → `file_read` 现有经验 → `file_patch` 追加新经验
+- [x] 下次 `sync_skills_to_l1()` 自动检测新经验文件 → L1 条目从单路径变双路径
 
 #### Step 6.3 — 验证 L1 路由双指向
 
 **验证点**：
-- [ ] L1 同一行同时指向 SKILL.md（技能本体）和 `skill_exp_*.md`（使用经验）
-- [ ] Agent 可按需 `file_read` 两者
+- [x] L1 同一行同时指向 SKILL.md（技能本体）和 `skill_exp_*.md`（使用经验）
+- [x] Agent 可按需 `file_read` 两者
 
 ---
 
@@ -460,9 +460,9 @@ def backup_and_patch_skill(skill_md_path, patch_content):
 
 - 环境变量 `GA_SKILL_PATCH_ENABLED=1` 为门禁（默认关闭）
 - **验证点**：
-  - [ ] 未设置环境变量时调用 → 抛 `PermissionError`
-  - [ ] 设置后调用 → 创建 `.bak` 文件（仅首次，不覆盖已有备份）
-  - [ ] Agent 需先调用此函数备份，再用 `file_patch` 修改 SKILL.md
+  - [x] 未设置环境变量时调用 → 抛 `PermissionError`
+  - [x] 设置后调用 → 创建 `.bak` 文件（仅首次，不覆盖已有备份）
+  - [x] Agent 需先调用此函数备份，再用 `file_patch` 修改 SKILL.md
 
 ---
 
