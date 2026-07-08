@@ -112,9 +112,11 @@ def _replace_between_markers(filepath, start_marker, end_marker, new_content):
 def sync_skills_to_l1(l1_path=None):
     """Scan skill directories -> sync to L1 [Skills] section (between auto markers).
 
-    Preserves manual notes outside markers. Each line format:
-        <name>: <SKILL.md_abs_path>
-        <name>: <SKILL.md_abs_path> | <experience_file_path>  (when experience file exists)
+    Hot/cold separation:
+      - Hot (has experience file): full path + experience path, one line per skill
+      - Cold (no experience file): comma-separated names, one line for all
+
+    Preserves manual notes outside markers.
 
     Args:
         l1_path: L1 file path override (for testing). Defaults to <script_dir>/memory/global_mem_insight.txt
@@ -123,17 +125,20 @@ def sync_skills_to_l1(l1_path=None):
 
     catalog = _discover_skills()
 
-    entries = []
+    hot_entries = []
+    cold_names = []
     for name, (desc, skill_path) in sorted(catalog.items()):
         exp_path = os.path.join(script_dir, 'memory', f'skill_exp_{name}.md')
         if os.path.isfile(exp_path):
-            entries.append(f"{name}: {skill_path} | {exp_path}")
+            hot_entries.append(f"{name}: {skill_path} | {exp_path}")
         else:
-            entries.append(f"{name}: {skill_path}")
+            cold_names.append(name)
 
     auto_block = f"{SKILL_START_MARKER}\n"
-    if entries:
-        auto_block += "\n".join(entries) + "\n"
+    if hot_entries:
+        auto_block += "\n".join(hot_entries) + "\n"
+    if cold_names:
+        auto_block += ", ".join(cold_names) + "\n"
     auto_block += SKILL_END_MARKER
 
     _replace_between_markers(l1_path, SKILL_START_MARKER, SKILL_END_MARKER, auto_block)

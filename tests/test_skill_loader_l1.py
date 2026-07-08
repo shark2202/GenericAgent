@@ -40,8 +40,7 @@ def test_sync_basic(tmp_path):
     content = open(l1_path).read()
     assert SKILL_START_MARKER in content
     assert SKILL_END_MARKER in content
-    assert "my-skill:" in content
-    assert "SKILL.md" in content
+    assert "my-skill" in content  # cold skill: name in comma list
 
 
 def test_project_overrides_user(tmp_path):
@@ -82,22 +81,22 @@ def test_marker_preserves_manual_notes(tmp_path):
 
 
 def test_experience_file_dual_path(tmp_path):
-    """Experience file exists -> dual path; absent -> single path."""
+    """Hot skill (has exp file) -> full path + exp; Cold skill (no exp) -> name in comma list."""
     l1_path = str(tmp_path / "l1.txt")
     skill_path = str(tmp_path / "skill" / "SKILL.md")
     os.makedirs(os.path.dirname(skill_path), exist_ok=True)
     open(skill_path, 'w').write('---\nname: test\ndescription: "T"\n---\n')
 
-    # No experience file -> single path
+    # No experience file -> cold -> name in comma list, no full path
     with patch.object(skill_loader, '_discover_skills') as mock_disc:
         mock_disc.return_value = {"test": ("T", skill_path)}
         sync_skills_to_l1(l1_path=l1_path)
     content = open(l1_path).read()
-    assert "test: " + skill_path in content
-    line = [l for l in content.split('\n') if l.startswith('test:')][0]
-    assert "|" not in line
+    assert "test" in content
+    assert "test:" not in content  # cold: no "name:" format
+    assert skill_path not in content  # cold: no full path
 
-    # Create experience file -> dual path
+    # Create experience file -> hot -> full path + exp path
     exp_path = os.path.join(skill_loader.script_dir, 'memory', 'skill_exp_test.md')
     os.makedirs(os.path.dirname(exp_path), exist_ok=True)
     open(exp_path, 'w').write("# Experience")
@@ -106,6 +105,7 @@ def test_experience_file_dual_path(tmp_path):
             mock_disc.return_value = {"test": ("T", skill_path)}
             sync_skills_to_l1(l1_path=l1_path)
         content = open(l1_path).read()
+        assert "test:" in content  # hot: "name:" format
         assert "|" in content
         assert "skill_exp_test.md" in content
     finally:
@@ -212,8 +212,8 @@ def test_exp_deleted_reverts(tmp_path):
         m.return_value = {"revert": ("D", skill_path)}
         sync_skills_to_l1(l1_path=l1_path)
     content = open(l1_path).read()
-    line = [l for l in content.split('\n') if l.startswith('revert:')][0]
-    assert "|" not in line
+    assert "revert:" not in content  # cold: no "name:" format
+    assert "revert" in content  # name in comma list
 
 
 # ── Integration tests ───────────────────────────────────────
@@ -244,7 +244,7 @@ def test_hot_reload(tmp_path, monkeypatch):
     with patch.object(skill_loader, '_discover_skills',
                       return_value={"new-skill": ("New", str(skills_dir / "SKILL.md"))}):
         sync_skills_to_l1(l1_path=l1_path)
-    assert "new-skill:" in open(l1_path).read()
+    assert "new-skill" in open(l1_path).read()  # cold: name in comma list
 
 
 def test_skill_removal(tmp_path, monkeypatch):
@@ -258,19 +258,19 @@ def test_skill_removal(tmp_path, monkeypatch):
     with patch.object(skill_loader, '_discover_skills',
                       return_value={"temp-skill": ("T", str(skill_dir / "SKILL.md"))}):
         sync_skills_to_l1(l1_path=l1_path)
-    assert "temp-skill:" in open(l1_path).read()
+    assert "temp-skill" in open(l1_path).read()  # cold: name in comma list
 
     import shutil
     shutil.rmtree(skill_dir)
     with patch.object(skill_loader, '_discover_skills', return_value={}):
         sync_skills_to_l1(l1_path=l1_path)
-    assert "temp-skill:" not in open(l1_path).read()
+    assert "temp-skill" not in open(l1_path).read()
 
 
 # ── Token budget test ───────────────────────────────────────
 
 def test_token_budget(tmp_path):
-    """L1 Skills section line count <= skill count + 2 markers, no description leakage."""
+    """L1 Skills section: cold skills = 1 comma line, no description leakage."""
     l1_path = str(tmp_path / "l1.txt")
     catalog = {}
     for i in range(17):
@@ -282,8 +282,40 @@ def test_token_budget(tmp_path):
     content = open(l1_path).read()
     auto_section = content[content.index(SKILL_START_MARKER):content.index(SKILL_END_MARKER) + len(SKILL_END_MARKER)]
     line_count = len([l for l in auto_section.strip().split('\n') if l])
-    assert line_count == 19  # 17 entries + 2 markers
+    assert line_count == 3  # 1 comma-separated cold line + 2 markers
     assert "x" * 100 not in content  # no description leakage
+
+
+def test_hot_cold_separation(tmp_path, monkeypatch):
+    """Hot skills (exp file) get full path; cold skills get comma list."""
+    l1_path = str(tmp_path / "l1.txt")
+    monkeypatch.setattr(skill_loader, 'script_dir', str(tmp_path))
+    os.makedirs(os.path.join(str(tmp_path), 'memory'), exist_ok=True)
+
+    # Create experience file for hot-skill only
+    exp_path = os.path.join(str(tmp_path), 'memory', 'skill_exp_hot.md')
+    open(exp_path, 'w').write("# Exp")
+
+    catalog = {
+        "hot": ("Hot desc", "/path/hot/SKILL.md"),
+        "cold-a": ("Cold A", "/path/cold-a/SKILL.md"),
+        "cold-b": ("Cold B", "/path/cold-b/SKILL.md"),
+    }
+    with patch.object(skill_loader, '_discover_skills', return_value=catalog):
+        sync_skills_to_l1(l1_path=l1_path)
+
+    content = open(l1_path).read()
+    # Hot: full path + exp, with | separator
+    assert "hot:" in content
+    assert "/path/hot/SKILL.md" in content
+    assert "skill_exp_hot.md" in content
+    assert "|" in content
+    # Cold: comma-separated names, no full paths
+    assert "cold-a" in content
+    assert "cold-b" in content
+    assert "," in content  # comma separator between cold names
+    assert "/path/cold-a/SKILL.md" not in content
+    assert "/path/cold-b/SKILL.md" not in content
 
 
 # ── Optional backup tests ───────────────────────────────────
