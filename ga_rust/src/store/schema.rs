@@ -89,6 +89,14 @@ impl<'a> Schema<'a> {
             );
             "
         )?;
+
+        // Migrations for existing tables that may lack newer columns
+        // These will fail silently if columns already exist
+        let _ = self.conn.execute_batch(
+            "ALTER TABLE goals ADD COLUMN deliverable TEXT;
+             ALTER TABLE subgoals ADD COLUMN description TEXT;"
+        );
+
         Ok(())
     }
 }
