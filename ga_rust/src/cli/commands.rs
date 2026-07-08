@@ -45,6 +45,9 @@ pub enum Commands {
         /// Run in foreground (don't detach)
         #[arg(short, long)]
         foreground: bool,
+        /// Detach and run as background daemon
+        #[arg(short, long)]
+        detach: bool,
     },
     /// Stop the running daemon
     DaemonStop,
@@ -213,9 +216,11 @@ impl Cli {
                 let output = core.llm_set(&model)?;
                 println!("{}", output);
             }
-            Commands::Daemon { foreground } => {
+            Commands::Daemon { foreground, detach } => {
                 let daemon = Daemon::new(&root)?;
-                daemon.start(foreground)?;
+                // --detach means background (not foreground); default is foreground
+                let fg = foreground || !detach;
+                daemon.start(fg)?;
             }
             Commands::DaemonStop => {
                 let daemon = Daemon::new(&root)?;

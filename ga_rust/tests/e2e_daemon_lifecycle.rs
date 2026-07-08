@@ -18,7 +18,7 @@ fn ga() -> Command {
 
 /// Helper: ensure daemon is stopped before/after tests
 fn ensure_daemon_stopped() {
-    let _ = ga().args(["daemon", "--stop"]).assert();
+    let _ = ga().args(["daemon-stop"]).assert();
     thread::sleep(Duration::from_millis(500));
 }
 
