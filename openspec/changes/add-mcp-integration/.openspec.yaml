@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-08
+goal: GenericAgent connects to external MCP Servers, exposes tools via mcp_call,
+  and integrates with L1-L4 memory + skill crystallization
