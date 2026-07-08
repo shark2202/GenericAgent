@@ -5,11 +5,12 @@
 
 use ga_tui::app::App;
 use ga_tui::config::Config;
-use ga_tui::event::AppEvent;
+use ga_tui::event::{AppEvent, EventHandler};
 use ga_tui::ipc::IpcClient;
 use ga_tui::ui;
 
 use std::io;
+use std::time::Duration;
 
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -75,6 +76,15 @@ async fn main() -> anyhow::Result<()> {
             if event_tx.send(AppEvent::Ipc(msg)).await.is_err() {
                 break; // Main loop exited
             }
+        }
+    });
+
+    // Spawn crossterm event handler (Key/Mouse/Resize/Tick → tx)
+    let tick_rate = Duration::from_millis(100);
+    let event_handler = EventHandler::new(tx.clone(), tick_rate);
+    tokio::spawn(async move {
+        if let Err(e) = event_handler.run().await {
+            tracing::error!("Event handler error: {e}");
         }
     });
 
