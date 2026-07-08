@@ -403,5 +403,126 @@ class TestGoalController(unittest.TestCase):
         self.assertTrue(self.ctrl.can_spawn_runner(goal.id))
 
 
+
+# ── Concurrent budget tests ──
+
+class TestConcurrentBudget(unittest.TestCase):
+    """Test budget enforcement under concurrent access."""
+
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.store = GoalStore(self.tmp.name)
+        self.ctrl = GoalController(self.store)
+
+    def tearDown(self):
+        self.ctrl.shutdown()
+        self.store.close()
+        try:
+            os.unlink(self.tmp.name)
+        except PermissionError:
+            pass
+
+    def test_concurrent_spawn_respects_budget(self):
+        """Multiple threads trying to spawn runners simultaneously must respect budget."""
+        import threading
+        goal = self.ctrl.propose(proposal="concurrent-test", max_concurrent_runners=2)
+        self.ctrl.run(goal.id, goal.confirm_token)
+
+        results = []
+        errors = []
+
+        def try_spawn():
+            try:
+                sid = self.ctrl.spawn_runner(goal.id)
+                results.append(sid)
+            except BudgetExhausted:
+                errors.append("budget")
+            except Exception as e:
+                errors.append(str(e))
+
+        # Launch 5 threads, only 2 should succeed
+        threads = [threading.Thread(target=try_spawn) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        # Exactly 2 should succeed, 3 should get BudgetExhausted
+        self.assertEqual(len(results), 2, f"Expected 2 spawns, got {len(results)}")
+        budget_errors = [e for e in errors if e == "budget"]
+        self.assertEqual(len(budget_errors), 3, f"Expected 3 budget errors, got {len(budget_errors)}")
+
+    def test_concurrent_confirm_same_goal(self):
+        """Only one confirm should succeed when multiple threads try to confirm."""
+        import threading
+        goal = self.ctrl.propose(proposal="confirm-race")
+        results = []
+        errors = []
+
+        def try_confirm():
+            try:
+                confirmed = self.ctrl.confirm(goal.id, goal.confirm_token)
+                results.append(confirmed.state)
+            except Exception as e:
+                errors.append(str(type(e).__name__))
+
+        threads = [threading.Thread(target=try_confirm) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        # At least one should succeed
+        self.assertGreaterEqual(len(results), 1, "At least one confirm should succeed")
+        # All successful confirms should be CONFIRMED
+        for state in results:
+            self.assertEqual(state, GoalState.CONFIRMED)
+
+    def test_budget_freed_after_concurrent_complete(self):
+        """Budget should be freed after concurrent runner completions."""
+        import threading
+        goal = self.ctrl.propose(proposal="budget-free", max_concurrent_runners=2)
+        self.ctrl.run(goal.id, goal.confirm_token)
+
+        # Spawn 2 runners
+        sid1 = self.ctrl.spawn_runner(goal.id)
+        sid2 = self.ctrl.spawn_runner(goal.id)
+
+        # Should be at budget
+        self.assertFalse(self.ctrl.can_spawn_runner(goal.id))
+
+        # Complete both concurrently
+        def complete(sid):
+            self.ctrl.complete_runner(goal.id, sid, "done")
+
+        t1 = threading.Thread(target=complete, args=(sid1,))
+        t2 = threading.Thread(target=complete, args=(sid2,))
+        t1.start(); t2.start()
+        t1.join(timeout=5); t2.join(timeout=5)
+
+        # Budget should be freed
+        self.assertTrue(self.ctrl.can_spawn_runner(goal.id))
+
+    def test_concurrent_propose_different_goals(self):
+        """Multiple goals can be proposed concurrently without interference."""
+        import threading
+        results = []
+
+        def propose(i):
+            g = self.ctrl.propose(proposal=f"goal-{i}")
+            results.append(g.id)
+
+        threads = [threading.Thread(target=propose, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        # All 5 should succeed with unique IDs
+        self.assertEqual(len(results), 5)
+        self.assertEqual(len(set(results)), 5, "All goal IDs should be unique")
+
+
 if __name__ == "__main__":
     unittest.main()

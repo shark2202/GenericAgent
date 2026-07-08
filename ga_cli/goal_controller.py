@@ -315,6 +315,7 @@ class GoalController:
     def __init__(self, store: GoalStore):
         self.store = store
         self._timers: Dict[str, threading.Timer] = {}
+        self._spawn_lock = threading.Lock()
 
     def propose(self, proposal: str, supervisor: str = "",
                 reason: str = "", max_concurrent_runners: int = 1,
@@ -426,24 +427,25 @@ class GoalController:
 
     def spawn_runner(self, goal_id: str, session_id: Optional[str] = None) -> str:
         """Spawn a runner session for a goal. Returns session_id."""
-        if not self.can_spawn_runner(goal_id):
+        with self._spawn_lock:
+            if not self.can_spawn_runner(goal_id):
+                goal = self.store.get_goal(goal_id)
+                active = self.store.count_active_sessions(goal_id)
+                if active == 0:
+                    self.mark_budget_exhausted(goal_id)
+                    raise BudgetExhausted(f"Budget exhausted for goal {goal_id}")
+                raise BudgetExhausted(
+                    f"Budget full for goal {goal_id} ({active}/{goal.max_concurrent_runners})"
+                )
+
+            if session_id is None:
+                session_id = str(uuid.uuid4())
+            self.store.add_session(goal_id, session_id)
+            self.store.update_session(goal_id, session_id, 'running')
+
             goal = self.store.get_goal(goal_id)
-            active = self.store.count_active_sessions(goal_id)
-            if active == 0:
-                self.mark_budget_exhausted(goal_id)
-                raise BudgetExhausted(f"Budget exhausted for goal {goal_id}")
-            raise BudgetExhausted(
-                f"Budget full for goal {goal_id} ({active}/{goal.max_concurrent_runners})"
-            )
-
-        if session_id is None:
-            session_id = str(uuid.uuid4())
-        self.store.add_session(goal_id, session_id)
-        self.store.update_session(goal_id, session_id, 'running')
-
-        goal = self.store.get_goal(goal_id)
-        goal.active_runners = self.store.count_active_sessions(goal_id)
-        self.store.save_goal(goal)
+            goal.active_runners = self.store.count_active_sessions(goal_id)
+            self.store.save_goal(goal)
 
         return session_id
 

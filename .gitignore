@@ -155,3 +155,13 @@ frontends/conductor_im_plugins/*
 # 本地 bug / 局限报告草稿（交给维护者参考，不进仓库）
 /BUG_*.md
 mykey.jsonc
+# Rust build artifacts
+ga_rust/target/
+# Comet runtime artifacts
+.comet/
+# SQLite databases
+*.db
+# Python cache
+*.pyc
+# GA data dir
+.ga_data/
