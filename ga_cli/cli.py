@@ -98,6 +98,12 @@ COMMANDS = {
         "cmd": None,
         "internal": True,
     },
+    "setup": {
+        "help": "交互式配置向导 (生成 mykey.jsonc)",
+        "desc": "问答式配置 API Key、模型提供商，生成最小可用的 mykey.jsonc",
+        "cmd": None,
+        "internal": True,
+    },
     "mcp": {
         "help": "Manage MCP servers",
         "desc": "List, start, stop, restart MCP servers",
@@ -196,6 +202,11 @@ def main():
 
     if cmd == "update":
         cmd_update()
+        return
+
+    if cmd == "setup":
+        from ga_cli.setup_wizard import run_setup_wizard
+        run_setup_wizard()
         return
 
     if cmd not in COMMANDS:
