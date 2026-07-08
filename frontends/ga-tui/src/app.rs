@@ -2,7 +2,7 @@
 
 use crate::config::Config;
 use crate::event::IpcMessage;
-use crate::ipc::{IpcClient, IpcCommand};
+use crate::ipc::{IpcBackend, IpcCommand};
 use crate::pane::{LineStyle, Pane, PaneStatus, RunnerKind};
 use crate::theme::Theme;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
@@ -28,7 +28,7 @@ pub struct App {
     pub should_quit: bool,
     pub last_error: Option<String>,
     pub size: (u16, u16),
-    pub ipc_client: Option<IpcClient>,
+    pub ipc_backend: Option<IpcBackend>,
     pub goal_summary: Option<String>,
     pub goals: Vec<crate::event::GoalSummary>,
     /// Pending IPC commands to be sent by the async event loop
@@ -51,18 +51,17 @@ impl App {
             should_quit: false,
             last_error: None,
             size: (80, 24),
-            ipc_client: None,
+            ipc_backend: None,
             goal_summary: None,
             goals: Vec::new(),
             pending_commands: Vec::new(),
         }
     }
 
-    /// Create with IPC channel
-    pub fn with_ipc(config: Config, ipc_tx: tokio::sync::mpsc::Sender<IpcMessage>) -> Self {
+    /// Create with an IPC backend
+    pub fn with_ipc_backend(backend: IpcBackend, config: Config) -> Self {
         let mut app = Self::new(config);
-        let socket_path = std::path::PathBuf::from(&app.config.socket_path);
-        app.ipc_client = Some(IpcClient::new(socket_path, ipc_tx));
+        app.ipc_backend = Some(backend);
         app
     }
 

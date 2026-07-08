@@ -5,8 +5,9 @@
 
 use ga_tui::app::App;
 use ga_tui::config::Config;
+use ga_tui::daemon_compat::DaemonCompatBridge;
 use ga_tui::event::{AppEvent, EventHandler};
-use ga_tui::ipc::IpcClient;
+use ga_tui::ipc::{IpcBackend, IpcClient};
 use ga_tui::ui;
 
 use std::io;
@@ -92,8 +93,8 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Store IPC client in app for sending commands
-    app.ipc_client = Some(ipc_client);
+    // Store IPC backend in app for sending commands
+    app.ipc_backend = Some(ipc_backend);
 
     // Run
     let result = run_app(&mut terminal, &mut app, rx).await;
@@ -136,7 +137,7 @@ async fn run_app(
 
             // Drain and send pending IPC commands
             for cmd in app.drain_commands() {
-                if let Some(ref ipc) = app.ipc_client
+                if let Some(ref ipc) = app.ipc_backend
                     && let Err(e) = ipc.send_command(cmd).await
                 {
                     tracing::warn!("IPC send failed: {e}");

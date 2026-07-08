@@ -3,9 +3,28 @@
 
 use crate::event::IpcMessage;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+
+/// Unified IPC backend: either ga-core streaming or ga_rust daemon (request-response).
+pub enum IpcBackend {
+    /// ga-core streaming IPC protocol
+    Core(IpcClient),
+    /// ga_rust daemon via DaemonCompatBridge
+    Daemon(Arc<crate::daemon_compat::DaemonCompatBridge>),
+}
+
+impl IpcBackend {
+    /// Send an IPC command through whichever backend is active.
+    pub async fn send_command(&self, cmd: IpcCommand) -> anyhow::Result<()> {
+        match self {
+            IpcBackend::Core(client) => client.send_command(cmd).await,
+            IpcBackend::Daemon(bridge) => bridge.send_ipc_command(cmd).await,
+        }
+    }
+}
 
 /// IPC command to send to core daemon
 #[derive(Debug, Clone, serde::Serialize)]

@@ -19,6 +19,7 @@
 use crate::event::IpcMessage;
 use crate::ipc::IpcCommand;
 use std::path::PathBuf;
+use std::sync::Arc;
 #[cfg(unix)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
@@ -204,24 +205,27 @@ impl DaemonCompatBridge {
     }
 
     /// Start the bridge: spawn a background task that polls the daemon.
-    pub fn start(self) -> tokio::task::JoinHandle<()> {
+    /// Returns an Arc handle that can also be used to send commands via `send_ipc_command`.
+    pub fn start(self) -> Arc<Self> {
+        let arc = Arc::new(self);
+        let arc_clone = arc.clone();
         tokio::spawn(async move {
             // Initial status check
-            if let Err(e) = self.send_daemon_command(DaemonCommand::Status).await {
+            if let Err(e) = arc_clone.send_daemon_command(DaemonCommand::Status).await {
                 tracing::warn!("DaemonCompatBridge: initial status check failed: {}", e);
             }
 
             // Polling loop
-            let mut interval = tokio::time::interval(self.poll_interval);
+            let mut interval = tokio::time::interval(arc_clone.poll_interval);
             loop {
                 interval.tick().await;
 
                 // Poll session list
-                match self.send_daemon_command(DaemonCommand::ListSessions).await {
+                match arc_clone.send_daemon_command(DaemonCommand::ListSessions).await {
                     Ok(resp) => {
-                        let msgs = self.translate_list_sessions(resp);
+                        let msgs = arc_clone.translate_list_sessions(resp);
                         for msg in msgs {
-                            if self.tx.send(msg).await.is_err() {
+                            if arc_clone.tx.send(msg).await.is_err() {
                                 // Receiver dropped, exit
                                 return;
                             }
@@ -232,7 +236,8 @@ impl DaemonCompatBridge {
                     }
                 }
             }
-        })
+        });
+        arc
     }
 
     /// Send an IpcCommand through the bridge (translates to daemon protocol).

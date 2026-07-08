@@ -33,6 +33,10 @@ pub struct Config {
     /// Show status bar
     #[serde(default = "default_true")]
     pub status_bar: bool,
+
+    /// Use ga_rust daemon protocol (request-response) instead of ga-core streaming
+    #[serde(default = "default_false")]
+    pub daemon_mode: bool,
 }
 
 impl Default for Config {
@@ -45,6 +49,7 @@ impl Default for Config {
             mouse: true,
             scrollback: 10000,
             status_bar: true,
+            daemon_mode: false,
         }
     }
 }
@@ -80,4 +85,5 @@ fn default_theme() -> String { "default".into() }
 fn default_tick_rate() -> u64 { 100 }
 fn default_prefix() -> String { "Ctrl+B".into() }
 fn default_true() -> bool { true }
+fn default_false() -> bool { false }
 fn default_scrollback() -> usize { 10000 }
