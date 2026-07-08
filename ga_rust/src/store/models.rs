@@ -499,6 +499,19 @@ impl Store {
         Ok(())
     }
 
+    pub fn goal_set_deliverable(&self, id: &str, deliverable: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        let affected = conn.execute(
+            "UPDATE goals SET deliverable=?1, updated_at=?2 WHERE id=?3",
+            rusqlite::params![deliverable, now, id],
+        )?;
+        if affected == 0 {
+            anyhow::bail!("Goal {} not found", id);
+        }
+        Ok(())
+    }
+
     // === SubGoal methods ===
 
     pub fn subgoal_create(&self, goal_id: &str, title: &str, session_id: Option<&str>) -> Result<crate::core::SubGoal> {

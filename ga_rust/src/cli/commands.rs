@@ -205,6 +205,9 @@ pub enum GoalCommands {
     Done {
         /// Goal ID
         id: String,
+        /// Deliverable description to record
+        #[arg(short, long)]
+        deliverable: Option<String>,
     },
     /// Mark a running goal as failed
     Fail {
@@ -216,10 +219,13 @@ pub enum GoalCommands {
         /// Goal ID
         id: String,
     },
-    /// Show goal deliverable
+    /// Set or show goal deliverable
     Deliverable {
         /// Goal ID
         id: String,
+        /// Set deliverable text (omit to show current)
+        #[arg(short, long)]
+        set: Option<String>,
     },
 }
 
@@ -365,7 +371,10 @@ impl Cli {
                     let output = core.goal_run(&id)?;
                     println!("{}", output);
                 }
-                GoalCommands::Done { id } => {
+                GoalCommands::Done { id, deliverable } => {
+                    if let Some(d) = deliverable {
+                        core.goal_set_deliverable(&id, &d)?;
+                    }
                     let output = core.goal_done(&id)?;
                     println!("{}", output);
                 }
@@ -377,9 +386,14 @@ impl Cli {
                     let output = core.goal_show(&id)?;
                     println!("{}", output);
                 }
-                GoalCommands::Deliverable { id } => {
-                    let output = core.goal_deliverable(&id)?;
-                    println!("{}", output);
+                GoalCommands::Deliverable { id, set } => {
+                    if let Some(d) = set {
+                        let output = core.goal_set_deliverable(&id, &d)?;
+                        println!("{}", output);
+                    } else {
+                        let output = core.goal_deliverable(&id)?;
+                        println!("{}", output);
+                    }
                 }
             },
         };

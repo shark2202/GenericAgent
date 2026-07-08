@@ -342,6 +342,11 @@ impl Orchestrator {
         }
     }
 
+    pub fn goal_set_deliverable(&self, id: &str, deliverable: &str) -> Result<String> {
+        self.store.goal_set_deliverable(id, deliverable)?;
+        Ok(format!("Deliverable set for goal {}.", id))
+    }
+
     pub fn goal_add_subgoal(&self, goal_id: &str, title: &str) -> Result<String> {
         let sg = self.store.subgoal_create(goal_id, title, None)?;
         Ok(format!("SubGoal added: {} ({}) to goal {}", sg.id, sg.title, goal_id))
