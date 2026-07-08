@@ -96,6 +96,9 @@ memory/L4_raw_sessions/*
 # MCP Client SOP
 !memory/mcp_sop.md
 
+# Skill Lifecycle SOP
+!memory/skill_sop.md
+
 
 # ADB UI tool
 !memory/adb_ui.py
