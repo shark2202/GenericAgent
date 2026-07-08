@@ -38,7 +38,11 @@ async fn main() -> anyhow::Result<()> {
     // Set up terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    if config.mouse {
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    } else {
+        execute!(stdout, EnterAlternateScreen)?;
+    }
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -80,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Spawn crossterm event handler (Key/Mouse/Resize/Tick → tx)
-    let tick_rate = Duration::from_millis(100);
+    let tick_rate = Duration::from_millis(config.tick_rate);
     let event_handler = EventHandler::new(tx.clone(), tick_rate);
     tokio::spawn(async move {
         if let Err(e) = event_handler.run().await {
@@ -96,11 +100,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    if app.config.mouse {
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+    } else {
+        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    }
 
     result
 }
