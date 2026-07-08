@@ -1,0 +1,210 @@
+    Checking ga v0.1.0 (D:\GenericAgent\temp\e2e_worktrees\ga-core-cli\ga_rust)
+warning: unused imports: `Approval` and `RiskLevel`
+ --> src\core\orchestrator.rs:6:20
+  |
+6 | use crate::store::{Approval, Origin, RiskLevel};
+  |                    ^^^^^^^^          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `BOOL`
+  --> src\core\daemon.rs:71:46
+   |
+71 |         use windows_sys::Win32::Foundation::{BOOL, FALSE};
+   |                                              ^^^^
+
+warning: unused import: `INFINITE`
+  --> src\core\daemon.rs:72:66
+   |
+72 |         use windows_sys::Win32::System::Threading::{OpenProcess, INFINITE, WaitForSingleObject};
+   |                                                                  ^^^^^^^^
+
+warning: unused import: `BOOL`
+   --> src\core\daemon.rs:444:46
+    |
+444 |         use windows_sys::Win32::Foundation::{BOOL, FALSE};
+    |                                              ^^^^
+
+warning: unused import: `Origin`
+ --> src\core\approval.rs:3:20
+  |
+3 | use crate::store::{Origin, RiskLevel};
+  |                    ^^^^^^
+
+warning: unused import: `config::AppConfig`
+ --> src\core\mod.rs:7:9
+  |
+7 | pub use config::AppConfig;
+  |         ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ApprovalPolicy`, `CallDecision`, `CallInfo`, and `CommandRule`
+ --> src\core\mod.rs:9:20
+  |
+9 | pub use approval::{ApprovalPolicy, CallInfo, CallDecision, CommandRule};
+  |                    ^^^^^^^^^^^^^^  ^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `anyhow::Result`
+ --> src\ipc\event_stream.rs:1:5
+  |
+1 | use anyhow::Result;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `Context`
+ --> src\ipc\server.rs:1:20
+  |
+1 | use anyhow::{bail, Context, Result};
+  |                    ^^^^^^^
+
+warning: unused imports: `ApprovalRequest`, `ApprovalResponse`, `EventKind`, `IpcMessage`, and `RiskLevel`
+ --> src\ipc\mod.rs:6:20
+  |
+6 | pub use protocol::{IpcMessage, EventKind, ApprovalRequest, ApprovalResponse, RiskLevel};
+  |                    ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `pty::PtySession`
+ --> src\ipc\mod.rs:7:9
+  |
+7 | pub use pty::PtySession;
+  |         ^^^^^^^^^^^^^^^
+
+warning: unused import: `event_stream::EventStream`
+ --> src\ipc\mod.rs:8:9
+  |
+8 | pub use event_stream::EventStream;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `DaemonCommand`, `DaemonResponse`, `DefaultIpcHandler`, `IpcClient`, `IpcHandler`, `IpcServer`, and `SessionInfo`
+ --> src\ipc\mod.rs:9:18
+  |
+9 | pub use server::{IpcServer, IpcClient, IpcHandler, DefaultIpcHandler, DaemonCommand, DaemonResponse, SessionInfo};
+  |                  ^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> src\runner\subprocess_adapter.rs:3:5
+  |
+3 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `RunnerOutput` and `RunnerStatus`
+ --> src\runner\mod.rs:6:44
+  |
+6 | pub use trait_def::{Runner, RunnerContext, RunnerOutput, RunnerStatus};
+  |                                            ^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `ga_adapter::GaRunner`
+ --> src\runner\mod.rs:7:9
+  |
+7 | pub use ga_adapter::GaRunner;
+  |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `subprocess_adapter::SubprocessRunner`
+ --> src\runner\mod.rs:8:9
+  |
+8 | pub use subprocess_adapter::SubprocessRunner;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `DateTime`
+ --> src\store\models.rs:2:14
+  |
+2 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^
+
+error[E0599]: the method `clone` exists for enum `std::option::Option<Commands>`, but its trait bounds were not satisfied
+   --> src\cli\commands.rs:175:28
+    |
+ 25 | pub enum Commands {
+    | ----------------- doesn't satisfy `Commands: Clone`
+...
+175 |         match self.command.clone().unwrap_or(Commands::Status) {
+    |                            ^^^^^ method cannot be called on `std::option::Option<Commands>` due to unsatisfied trait bounds
+    |
+    = note: the following trait bounds were not satisfied:
+            `Commands: Clone`
+            which is required by `std::option::Option<Commands>: Clone`
+help: consider annotating `Commands` with `#[derive(Clone)]`
+    |
+ 25 + #[derive(Clone)]
+ 26 | pub enum Commands {
+    |
+
+error[E0599]: no method named `clone` found for struct `Store` in the current scope
+   --> src\core\daemon.rs:196:31
+    |
+196 |         let store_evt = store.clone();
+    |                               ^^^^^ method not found in `Store`
+    |
+   ::: src\store\mod.rs:12:1
+    |
+ 12 | pub struct Store {
+    | ---------------- method `clone` not found for this struct
+    |
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following trait defines an item `clone`, perhaps you need to implement it:
+            candidate #1: `Clone`
+
+error[E0599]: no method named `clone` found for struct `Store` in the current scope
+   --> src\core\daemon.rs:215:31
+    |
+215 |         let store_hdl = store.clone();
+    |                               ^^^^^ method not found in `Store`
+    |
+   ::: src\store\mod.rs:12:1
+    |
+ 12 | pub struct Store {
+    | ---------------- method `clone` not found for this struct
+    |
+    = help: items from traits can only be used if the trait is implemented and in scope
+    = note: the following trait defines an item `clone`, perhaps you need to implement it:
+            candidate #1: `Clone`
+
+error[E0599]: no variant named `Run` found for enum `DaemonCommand`
+   --> src\core\daemon.rs:248:32
+    |
+248 |                 DaemonCommand::Run { command } => {
+    |                                ^^^ variant not found in `DaemonCommand`
+    |
+   ::: src\ipc\server.rs:8:1
+    |
+  8 | pub enum DaemonCommand {
+    | ---------------------- variant `Run` not found here
+
+error[E0599]: no variant named `Watch` found for enum `DaemonCommand`
+   --> src\core\daemon.rs:261:32
+    |
+261 |                 DaemonCommand::Watch { session_id } => {
+    |                                ^^^^^ variant not found in `DaemonCommand`
+    |
+   ::: src\ipc\server.rs:8:1
+    |
+  8 | pub enum DaemonCommand {
+    | ---------------------- variant `Watch` not found here
+
+warning: unused import: `Runner`
+ --> src\core\orchestrator.rs:4:21
+  |
+4 | use crate::runner::{Runner, RunnerContext, RunnerRegistry};
+  |                     ^^^^^^
+
+warning: unused variable: `handler`
+  --> src\ipc\server.rs:56:32
+   |
+56 |     pub async fn run<H>(&self, handler: H, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>)
+   |                                ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_handler`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `sid`
+   --> src\store\models.rs:276:36
+    |
+276 |         let mut stmt = if let Some(sid) = session_id {
+    |                                    ^^^ help: if this is intentional, prefix it with an underscore: `_sid`
+
+warning: unused variable: `sid`
+   --> src\store\models.rs:354:36
+    |
+354 |         let mut stmt = if let Some(sid) = session_id {
+    |                                    ^^^ help: if this is intentional, prefix it with an underscore: `_sid`
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `ga` (bin "ga") generated 22 warnings
+error: could not compile `ga` (bin "ga") due to 5 previous errors; 22 warnings emitted

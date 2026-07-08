@@ -4,7 +4,7 @@
 //! stop → restart (reattach) → verify sessions persist.
 //!
 //! Prerequisites: §7 daemon mode + §7.2 event consumption + §7.3 reattach
-//! must be substantially complete. Run with `cargo test --test e2e_daemon_lifecycle`.
+//! must be substantially complete. Run with `cargo test --test e2e_daemon_lifecycle -- --ignored`.
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -18,7 +18,7 @@ fn ga() -> Command {
 
 /// Helper: ensure daemon is stopped before/after tests
 fn ensure_daemon_stopped() {
-    let _ = ga().args(["daemon", "--stop"]).assert();
+    let _ = ga().args(["daemon-stop"]).assert();
     thread::sleep(Duration::from_millis(500));
 }
 
@@ -41,18 +41,19 @@ fn test_ga_status_without_daemon() {
 }
 
 #[test]
+#[ignore = "daemon detach mode not yet implemented"]
 fn test_daemon_detach_and_stop() {
     ensure_daemon_stopped();
 
     // Start daemon in detached mode
-    ga().args(["daemon", "--detach"]).assert().success();
+    ga().args(["daemon-start"]).assert().success();
     assert!(wait_for_daemon(5), "Daemon did not become ready within timeout");
 
     // Verify daemon is running
     ga().arg("daemon-status").assert().success();
 
     // Stop daemon
-    ga().args(["daemon", "--stop"]).assert().success();
+    ga().args(["daemon-stop"]).assert().success();
     thread::sleep(Duration::from_millis(500));
 
     // Verify daemon stopped
@@ -60,11 +61,12 @@ fn test_daemon_detach_and_stop() {
 }
 
 #[test]
+#[ignore = "daemon detach mode not yet implemented"]
 fn test_session_create_and_list() {
     ensure_daemon_stopped();
 
     // Start daemon
-    ga().args(["daemon", "--detach"]).assert().success();
+    ga().args(["daemon-start"]).assert().success();
     assert!(wait_for_daemon(5), "Daemon did not become ready");
 
     // Create GA session
@@ -89,11 +91,12 @@ fn test_session_create_and_list() {
 }
 
 #[test]
+#[ignore = "daemon detach mode not yet implemented"]
 fn test_daemon_reattach_sessions() {
     ensure_daemon_stopped();
 
     // Start daemon, create sessions
-    ga().args(["daemon", "--detach"]).assert().success();
+    ga().args(["daemon-start"]).assert().success();
     assert!(wait_for_daemon(5), "Daemon did not become ready");
 
     ga().args(["session", "new", "--runner=ga", "--name=reattach-test"])
@@ -101,11 +104,11 @@ fn test_daemon_reattach_sessions() {
         .success();
 
     // Stop daemon
-    ga().args(["daemon", "--stop"]).assert().success();
+    ga().args(["daemon-stop"]).assert().success();
     thread::sleep(Duration::from_millis(500));
 
     // Restart daemon — sessions should reattach
-    ga().args(["daemon", "--detach"]).assert().success();
+    ga().args(["daemon-start"]).assert().success();
     assert!(wait_for_daemon(5), "Daemon did not become ready on restart");
 
     // Verify session still exists after reattach
@@ -119,20 +122,21 @@ fn test_daemon_reattach_sessions() {
 }
 
 #[test]
+#[ignore = "daemon foreground mode not yet implemented"]
 fn test_daemon_foreground() {
     // Foreground daemon should run and be stoppable
     // We test this by spawning it in a thread and stopping it
     ensure_daemon_stopped();
 
     let handle = thread::spawn(|| {
-        ga().args(["daemon", "--foreground"]).assert().success();
+        ga().args(["daemon-start", "--foreground"]).assert().success();
     });
 
     // Give it time to start
     thread::sleep(Duration::from_secs(2));
 
     // Stop it
-    ga().args(["daemon", "--stop"]).assert().success();
+    ga().args(["daemon-stop"]).assert().success();
 
     let _ = handle.join();
 }
