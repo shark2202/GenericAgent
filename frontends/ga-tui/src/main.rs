@@ -5,7 +5,8 @@
 
 use ga_tui::app::App;
 use ga_tui::config::Config;
-use ga_tui::event::{AppEvent, EventHandler};
+use ga_tui::event::AppEvent;
+use ga_tui::ipc::IpcClient;
 use ga_tui::ui;
 
 use std::io;
@@ -20,10 +21,16 @@ use ratatui::Terminal;
 
 use tokio::sync::mpsc;
 
-const TICK_RATE_MS: u64 = 100;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing (P1b)
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        )
+        .init();
+
     // Parse config
     let config = Config::load().unwrap_or_default();
 
@@ -34,21 +41,47 @@ async fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // P1a: Install panic hook to restore terminal before unwinding
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Best-effort terminal restore (ignore errors in panic context)
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        original_hook(info);
+    }));
+
     // Event channel
     let (tx, rx) = mpsc::channel::<AppEvent>(100);
 
     // Create app
-    let mut app = App::new(config);
+    let mut app = App::new(config.clone());
 
-    // Spawn event handler
-    let event_handler = EventHandler::new(tx, std::time::Duration::from_millis(TICK_RATE_MS));
+    // P0: Wire up IPC client
+    let (ipc_tx, mut ipc_rx) = mpsc::channel::<ga_tui::event::IpcMessage>(100);
+    let socket_path = std::path::PathBuf::from(&config.socket_path);
+    let ipc_client = IpcClient::new(socket_path, ipc_tx);
+
+    // Spawn IPC reader task (connects to daemon, forwards IpcMessage)
+    if let Err(e) = ipc_client.start_reader() {
+        tracing::warn!("Failed to start IPC reader: {e}");
+    } else {
+        tracing::info!("IPC reader started, connecting to {}", config.socket_path);
+    }
+
+    // Spawn bridge task: IpcMessage → AppEvent::Ipc
+    let event_tx = tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = event_handler.run().await {
-            eprintln!("Event handler error: {}", e);
+        while let Some(msg) = ipc_rx.recv().await {
+            if event_tx.send(AppEvent::Ipc(msg)).await.is_err() {
+                break; // Main loop exited
+            }
         }
     });
 
-    // Main loop
+    // Store IPC client in app for sending commands
+    app.ipc_client = Some(ipc_client);
+
+    // Run
     let result = run_app(&mut terminal, &mut app, rx).await;
 
     // Restore terminal
