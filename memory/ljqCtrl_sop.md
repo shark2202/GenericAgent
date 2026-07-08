@@ -1,3 +1,12 @@
+---
+type: SOP
+title: ljqCtrl 使用与坐标转换 SOP
+description: 物理坐标操作工具的使用规范——必须更新 checkpoint、禁用 pyautogui、操作前先激活窗口。
+tags: [desktop-automation, coordinates, ljqctrl]
+resource: ljqCtrl.py
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # ljqCtrl 使用与坐标转换 SOP
 
 > **must call update working ckp**：`一律使用物理坐标｜禁pyautogui｜操作前先激活窗口`

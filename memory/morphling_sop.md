@@ -1,3 +1,11 @@
+---
+type: SOP
+title: morphling_sop
+description: Morphling 模式的定义与使用流程。
+tags: [morphling, execution]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # morphling_sop
 
 ## 定义

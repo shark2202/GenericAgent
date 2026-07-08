@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 记忆管理 SOP
+description: L1-L4 记忆层级架构的职责定义、同步规则与核心公理（行动验证、神圣不可删改、最小充分指针）。
+tags: [memory, architecture, principles]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 ## 0. 核心公理 (Core Axioms - 最高优先级)
 1.  **行动验证原则 (Action-Verified Only)**
     *   **定义**：任何写入 L1/L2/L3 的信息，必须源自**成功的工具调用结果**（如 `shell` 执行成功、`file_read` 确认内容存在、代码运行通过）。

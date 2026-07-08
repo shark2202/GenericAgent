@@ -1,3 +1,12 @@
+---
+type: SOP
+title: TMWebDriver SOP
+description: Chrome CDP 代理控制的特性与坑——直接用 web_scan/web_execute_js，保留用户浏览器登录态。
+tags: [browser, webdriver, cdp]
+resource: ../TMWebDriver.py
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # TMWebDriver SOP
 
 - 直接用web_scan/web_execute_js工具。本文件只记录特性和坑。
@@ -120,6 +129,7 @@ web_execute_js script='{"cmd": "batch", "commands": [...]}'
 - ⭐**一键释放与登录**：bringToFront → mousePressed点任一字段(无需Released，一个释放全页) → 等500ms → 补input/change事件 → 点登录
 
 ## 验证码/页面视觉截图
+> 视觉 API 详见 [vision_sop](/memory/vision_sop.md)
 - ⭐首选CDP截图：`Page.captureScreenshot`(format:'png')→返回base64，无需前台/后台tab也行，全页高清
 - 验证码canvas/img：JS `canvas.toDataURL()` 直接拿base64最干净
 

@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 定时任务 SOP
+description: 定时任务的定义与执行规范，任务 JSON 放 sche_tasks/，执行报告放 done/。
+tags: [scheduled-task, automation]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # 定时任务 SOP
 
 目录：`../sche_tasks/` 放任务定义JSON，`../sche_tasks/done/` 放执行报告

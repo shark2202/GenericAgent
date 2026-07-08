@@ -1,6 +1,14 @@
+---
+type: SOP
+title: computer_use
+description: 屏幕视觉与坐标操作工具链的使用指南，关联 ui_detect.py 与 ljqCtrl。
+tags: [vision, desktop-automation, computer-use]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # computer_use
 
-相关L3 memory: **ui_detect.py** ljqCtrl.py/ljqCtrlBg.py ljqCtrl_sop.md
+相关L3 memory: **ui_detect.py** ljqCtrl.py/ljqCtrlBg.py [ljqCtrl_sop](/memory/ljqCtrl_sop.md)。视觉相关见 [vision_sop](/memory/vision_sop.md)
 
 ## 0. GUI操作节奏建议
 进入新界面时，建议先只探测不操作：枚举窗口 + UIA + ljqCtrl截图 + ui_detect，读完实际输出再决定下一步

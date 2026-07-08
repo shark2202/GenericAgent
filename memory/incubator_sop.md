@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Incubator SOP — 远程部署GA实例
+description: 自我复制到任意节点的 agent 网络部署流程，每个节点有独立记忆。
+tags: [deployment, multi-agent, network]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Incubator SOP — 远程部署GA实例
 自我复制到任意节点的agent网络。每个节点有独立记忆，可以通过编辑memory干预它们的行为
 

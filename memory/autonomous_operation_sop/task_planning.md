@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 任务规划模式
+description: 基于 TODO.txt 的任务规划与执行流程，含依赖排序与并行策略。
+tags: [planning, task, autonomous]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # 任务规划模式
 
 - **有TODO**：cwd下 `TODO.txt` 有待执行条目 → 直接跳到「执行流程」

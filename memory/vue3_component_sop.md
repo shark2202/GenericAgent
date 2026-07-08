@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Vue 3 自定义组件 JS 操作 SOP
+description: Vue 3 组件的 JS 操作问题与解决方案。
+tags: [vue3, frontend, dom]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Vue 3 自定义组件 JS 操作 SOP
 
 ## 问题

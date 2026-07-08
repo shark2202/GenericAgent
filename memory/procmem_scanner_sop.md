@@ -1,3 +1,12 @@
+---
+type: SOP
+title: Memory Scanner SOP
+description: 进程内存扫描工具的快速开始与使用流程。
+tags: [memory, scanner, process]
+resource: procmem_scanner.py
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Memory Scanner SOP
 
 ## 1. 快速开始

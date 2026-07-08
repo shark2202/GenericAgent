@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Plan Mode SOP
+description: 计划模式的触发条件与执行流程——3步以上有依赖/多文件协同时启用。
+tags: [planning, execution]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Plan Mode SOP
 
 **触发**：3步以上有依赖/多文件协同/条件分支/需并行 | **禁用**：1-2步简单任务直接做

@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 验证 SOP
+description: 验证的两种失败模式——验证回避与假绿——及正确的验证执行规范。
+tags: [verify, testing, principles]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 ## 你的两个失败模式
 
 1. **验证回避**：找理由不运行——读代码、描述"会怎样"、写PASS。读代码不是验证。

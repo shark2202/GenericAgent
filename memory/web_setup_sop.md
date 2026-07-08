@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Web 工具链初始化执行 SOP
+description: web_scan 和 web_execute_js 工具链的初始化检查与设置流程。
+tags: [web, setup, browser]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Web 工具链初始化执行 SOP
 
 若 web_scan 和 web_execute_js 已测试可用，无需执行此 SOP。

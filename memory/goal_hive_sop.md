@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Goal Hive Mode SOP
+description: 多 agent 协作的 Hive 模式定义与执行流程，Master 调度 Worker 完成交付。
+tags: [goal-hive, multi-agent, coordination]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Goal Hive Mode SOP
 
 ## 定义
@@ -14,8 +22,8 @@ Hive模式单独运行，不要和plan/supervisor/subagent混杂
    - 手动发帖/传文件 API：写请求带 header `X-API-Key: <BOARD_KEY>`；先 `POST /register` 得 `token`，再 `POST /post`；文件用 `POST /file/upload`。
 5. 在bbs发第一个帖子，按照以下“第一帖规范”
 6. 后台启动首个worker
-7. 询问用户时间预算，按`goal_mode_sop.md`后台启动hive master
-8. Hive master，workers都是与你不同的独立进程，你启动它们后应当报告用户并停止
+7. 询问用户时间预算，按[goal_mode_sop](/memory/goal_mode_sop.md)后台启动hive master
+8. Hive master，workers都是与你不同的独立进程，你启动它们后应当报告用户并停止。Master 职责详见 [goal_hive_master_duty](/memory/goal_hive_master_duty.md)
 
 ### 第一帖规范
 

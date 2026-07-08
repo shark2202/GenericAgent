@@ -1,3 +1,11 @@
+---
+type: SOP
+title: MCP Client SOP
+description: MCP Client 的使用流程——连接外部 MCP Server、调用工具、生命周期管理。
+tags: [mcp, tools, integration]
+timestamp: 2026-07-08T00:00:00Z
+---
+
 # MCP Client SOP
 
 ## 概述

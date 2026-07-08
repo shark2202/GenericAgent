@@ -1,4 +1,14 @@
+---
+type: SOP
+title: 记忆整理 SOP
+description: 记忆层级间的整理与压缩流程，以存在性编码为核心原则。
+tags: [memory, cleanup, maintenance]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # 记忆整理 SOP
+
+> 依赖：[memory_management_sop](/memory/memory_management_sop.md)（L1-L4 层级架构定义）
 
 ## 核心原则：存在性编码
 LLM自身是压缩器+解码器。L1只需让它**意识到某类知识存在**，它就能通过tool call自行取用深层内容。

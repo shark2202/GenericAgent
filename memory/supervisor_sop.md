@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 监察者模式 SOP
+description: 让用户一次说明任务后尽量不用多轮纠偏的监察者执行模式。
+tags: [supervisor, execution, monitoring]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # 监察者模式 SOP
 
 目标：让用户一次说明任务后，尽量不用多轮纠偏。  

@@ -1,3 +1,11 @@
+---
+type: SOP
+title: 自主行动 SOP
+description: 自主行动模式下的报告路径、TODO 管理与执行流程规范。
+tags: [autonomous, execution]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # 自主行动 SOP
 
 ⚠️ **路径警告**：autonomous_reports 在 temp/ 下，用`./autonomous_reports/`访问，**不是**`../memory/autonomous_reports/`或`../autonomous_reports/`！TODO在cwd下。

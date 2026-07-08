@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Subagent 调用 SOP
+description: 子 agent 的两种调用模式与使用规范。
+tags: [subagent, multi-agent, delegation]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Subagent 调用 SOP
 
 ## 两种模式

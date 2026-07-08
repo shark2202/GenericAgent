@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Checklist SOP
+description: 启动者与执行者的清单驱动任务协作流程。
+tags: [checklist, collaboration]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Checklist SOP
 
 ## Booter（启动者/用户）

@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Goal Mode SOP
+description: 目标驱动模式的启用条件与执行流程。
+tags: [goal-mode, execution]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Goal Mode SOP
 
 ## 何时使用

@@ -1,3 +1,12 @@
+---
+type: SOP
+title: Vision API SOP
+description: 视觉 API 的前置规则与使用流程，含截图、OCR、图像理解。
+tags: [vision, ocr, screenshot]
+resource: vision_api.template.py
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Vision API SOP
 
 ## ⚠️ 前置规则（必须遵守）

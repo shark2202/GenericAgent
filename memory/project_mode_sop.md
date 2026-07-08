@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Project Mode SOP
+description: 项目模式的定义与执行流程。
+tags: [project-mode, execution]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Project Mode SOP
 
 ## 定义

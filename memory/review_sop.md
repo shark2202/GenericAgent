@@ -1,3 +1,11 @@
+---
+type: SOP
+title: Review Mode SOP
+description: In-session 对抗式代码审查模式，用 /review 触发，主 agent 在当前对话内执行。
+tags: [review, code-review, in-session]
+timestamp: 2026-07-03T00:00:00Z
+---
+
 # Review Mode SOP
 
 > In-session adversarial code reviewer。用 `/review` 触发,主 agent 在当前对话内
