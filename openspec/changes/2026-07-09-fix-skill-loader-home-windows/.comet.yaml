@@ -1,0 +1,12 @@
+workflow: hotfix
+phase: build
+language: zh-CN
+build_mode: direct
+isolation: branch
+tdd_mode: direct
+verify_mode: light
+auto_transition: false
+base_ref: 3313552b56827963c40a6900c75b56fd0a876a04
+created_at: 2026-07-09
+archived: false
+note: "手工创建：comet scripts/ 缺失 + openspec CLI 未装，标准状态机不可用；按 archive 约定手工维护"

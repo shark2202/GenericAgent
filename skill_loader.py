@@ -65,7 +65,7 @@ def _discover_skills(cwd_skills_root=None):
     Returns:
         {name: (description, abs_skill_md_path)} dict, possibly empty.
     """
-    home = os.environ.get('HOME', '')
+    home = os.environ.get('HOME') or os.environ.get('USERPROFILE') or os.path.expanduser('~')
     user_root = os.path.join(home, '.agents', 'skills') if home else None
     cwd = cwd_skills_root or os.getcwd()
     project_root = os.path.join(cwd, '.agents', 'skills')

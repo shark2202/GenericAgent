@@ -339,3 +339,27 @@ def test_backup_skill_creates_bak(tmp_path):
         skill.write_text("modified")
         backup_and_patch_skill(str(skill), "patch")
         assert (tmp_path / "SKILL.md.bak").read_text() == "original"
+
+
+# ── Windows path resolution tests ──────────────────────────────
+
+def test_discover_skills_home_unset_uses_userprofile(tmp_path, monkeypatch):
+    """HOME unset (Windows) + USERPROFILE set -> discover skills via USERPROFILE.
+
+    Regression: pre-fix, HOME='' caused user_root=None, so user-level skills
+    were never scanned on Windows. This test does NOT mock _discover_skills.
+    """
+    user_home = tmp_path / "winhome"
+    skill_dir = user_home / ".agents" / "skills" / "win-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text('---\nname: win-skill\ndescription: "W"\n---\n')
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("USERPROFILE", str(user_home))
+
+    catalog = _discover_skills(cwd_skills_root=str(proj))
+    assert "win-skill" in catalog
+    assert str(skill_dir / "SKILL.md") == catalog["win-skill"][1]
