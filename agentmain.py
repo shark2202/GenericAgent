@@ -160,6 +160,24 @@ class GenericAgent:
             setattr(self.llmclient.backend, k, v)
             display_queue.put({'done': smart_format(f"✅ session.{k} = {repr(v)}", max_str_len=500), 'source': 'system'})
             return None
+        if _llm_m := re.match(r'/llm(?:\s+(\S+))?', raw_query.strip()):
+            arg = _llm_m.group(1)
+            if arg is not None:
+                try:
+                    idx = int(arg)
+                    self.next_llm(idx)
+                    name = self.get_llm_name(model=True)
+                    display_queue.put({'done': f"✅ 已切换到模型 [{self.llm_no}] {name}", 'source': 'system'})
+                except Exception as e:
+                    display_queue.put({'done': f"❌ 切换失败: {e}", 'source': 'system'})
+            else:
+                rows = self.list_llms()
+                if not rows:
+                    display_queue.put({'done': '没有可用模型。', 'source': 'system'})
+                else:
+                    lines = [f"{'✓' if cur else ' '} [{i}] {name}" for i, name, cur in rows]
+                    display_queue.put({'done': f"可用模型:\n" + "\n".join(lines) + "\n用法: /llm <编号> 切换模型", 'source': 'system'})
+            return None
         if raw_query.strip() == '/resume':
             return r'帮我看看最近有哪些会话可以恢复。读model_responses/目录，按修改时间取最近10个文件，从每个文件里找最后一个<history>...</history>块，用一句话总结每个会话在聊什么，列表给我选。注意读文件后要把字面的\n替换成真换行才能正确匹配。'
         return raw_query
@@ -236,6 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('--input', help='prompt')
     parser.add_argument('--history', help='history json file')
     parser.add_argument('--llm_no', type=int, default=0)
+    parser.add_argument('--list-llms', action='store_true', help='List available LLM models and exit')
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--nobg', action='store_true')
     parser.add_argument('--nolog', action='store_true')
@@ -259,6 +278,19 @@ if __name__ == '__main__':
     agent = GenericAgent()
     if args.nolog: agent.log_path = False
     agent.next_llm(args.llm_no)
+
+    # --list-llms: print model list and exit
+    if args.list_llms:
+        rows = agent.list_llms()
+        if not rows:
+            print("No LLM models configured. Run 'ga setup' to add one.")
+        else:
+            print("Available LLM models:")
+            for i, name, active in rows:
+                marker = " ← current" if active else ""
+                print(f"  [{i}] {name}{marker}")
+        sys.exit(0)
+
     agent.verbose = args.verbose
     threading.Thread(target=agent.run, daemon=True).start()
 

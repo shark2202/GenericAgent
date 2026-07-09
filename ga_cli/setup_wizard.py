@@ -72,12 +72,54 @@ def fetch_models(apibase, apikey, provider):
         return None
 
 
+def show_existing_configs(path):
+    """Parse mykey.jsonc and display configured LLM blocks."""
+    import json
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return
+
+    # Use llmcore's state-machine JSONC parser (safe with // inside strings like URLs)
+    try:
+        from llmcore import _strip_jsonc
+        content = _strip_jsonc(content)
+    except ImportError:
+        # Fallback: try raw JSON (most mykey.jsonc are valid JSON)
+        pass
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        print("  ⚠️  Could not parse existing config (invalid JSON).")
+        return
+
+    if not data:
+        print("  (empty config file)")
+        return
+
+    print("\n  Current configurations:")
+    for i, (key, val) in enumerate(data.items()):
+        if not isinstance(val, dict):
+            continue
+        name = val.get("name", "?")
+        model = val.get("model", "?")
+        apibase = val.get("apibase", "")
+        print(f"    [{i}] {name:12s} · {model:24s} · ({key})")
+        if apibase:
+            print(f"        apibase: {apibase}")
+    print()
+
+
 def detect_existing(path):
     """Detect existing mykey.jsonc and return user choice. Returns 'create', 'overwrite', 'exit', or 'append'."""
     if not os.path.exists(path):
         return "create"
 
     print(f"\n⚠️  {path} already exists.")
+    show_existing_configs(path)
     print("  [o] Overwrite — replace entirely")
     print("  [a] Append — add new config block at end")
     print("  [x] Exit — do nothing")
