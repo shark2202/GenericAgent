@@ -68,7 +68,10 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -p no:langsmith_plugin"
+# langsmith_plugin auto-loads via entry point and triggers `import packaging.version`
+# which fails under a namespace-shadowed packaging on this env. GA tests do not use
+# langsmith's pytest features, so disabling is safe. Remove if langsmith tests needed.
 
 [tool.coverage.run]
 source = ["ga_cli", "mcp_client", "agent_loop", "agentmain", "ga", "llmcore", "simphtml", "TMWebDriver", "skill_loader"]

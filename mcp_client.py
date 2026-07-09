@@ -592,7 +592,8 @@ class MCPClientManager:
         self.registry = MCPToolRegistry()
         self._connections: dict[str, MCPServerConnection] = {}
         self._config: dict[str, dict] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._reload_lock = threading.Lock()
         self._health: Optional[HealthMonitor] = None
         self._hot: Optional[HotReloader] = None
         self._started = False
@@ -711,37 +712,40 @@ class MCPClientManager:
 
     def reload_config(self):
         """Hot-reload: diff new config against current, apply incremental changes."""
-        with self._lock:
-            if self._lock.locked():
-                pass  # already locked, prevent concurrent reload
+        if not self._reload_lock.acquire(blocking=False):
+            return  # another reload in progress, skip this cycle
         try:
-            new_config = load_config(self.config_path)
-        except ValueError as e:
-            print(f"[MCP ERROR] Hot-reload failed (invalid JSON): {e}. Existing connections preserved.")
-            return
+            try:
+                new_config = load_config(self.config_path)
+            except ValueError as e:
+                print(f"[MCP ERROR] Hot-reload failed (invalid JSON): {e}. Existing connections preserved.")
+                return
 
-        old_names = set(self._config.keys())
-        new_names = set(new_config.keys())
+            with self._lock:
+                old_names = set(self._config.keys())
+                new_names = set(new_config.keys())
+                to_remove = list(old_names - new_names)
+                to_add = list(new_names - old_names)
+                to_restart = [n for n in old_names & new_names if self._config[n] != new_config[n]]
+                for name in to_remove:
+                    self._config.pop(name, None)
+                for name in to_add:
+                    self._config[name] = new_config[name]
+                for name in to_restart:
+                    self._config[name] = new_config[name]
 
-        # Removed servers
-        for name in old_names - new_names:
-            print(f"[MCP] Hot-reload: removing server '{name}'")
-            self._disconnect_server(name)
-            self._config.pop(name, None)
-
-        # New servers
-        for name in new_names - old_names:
-            print(f"[MCP] Hot-reload: adding server '{name}'")
-            self._config[name] = new_config[name]
-            self._connect_server(name, new_config[name])
-
-        # Changed servers
-        for name in old_names & new_names:
-            if self._config[name] != new_config[name]:
+            for name in to_remove:
+                print(f"[MCP] Hot-reload: removing server '{name}'")
+                self._disconnect_server(name)
+            for name in to_add:
+                print(f"[MCP] Hot-reload: adding server '{name}'")
+                self._connect_server(name, new_config[name])
+            for name in to_restart:
                 print(f"[MCP] Hot-reload: restarting server '{name}' (config changed)")
                 self._disconnect_server(name)
-                self._config[name] = new_config[name]
                 self._connect_server(name, new_config[name])
+        finally:
+            self._reload_lock.release()
 
     # Alias for skill_loader compatibility
     def get_all_tools_summary(self) -> str:

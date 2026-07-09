@@ -46,6 +46,16 @@ def get_system_prompt():
     with open(os.path.join(script_dir, f'assets/sys_prompt{lang_suffix}.txt'), 'r', encoding='utf-8') as f: prompt = f.read()
     prompt += f"\nToday: {time.strftime('%Y-%m-%d %a')}\n"
     prompt += get_global_memory()
+    # MCP tools injection (L1): spec mcp-client SHALL inject connected server tools
+    # into system prompt so the LLM can discover server/tool names for mcp_call.
+    if MCPClientManager is not None:
+        _mgr = MCPClientManager.get_instance()
+        if _mgr is not None:
+            _mcp_summary = _mgr.get_all_tools_summary()
+            if _mcp_summary:
+                prompt += "\n" + _mcp_summary
+            else:
+                prompt += "\n[MCP] No servers connected. Configure .ga/mcp_servers.json to enable MCP tools.\n"
     return prompt
 
 # SDK:
