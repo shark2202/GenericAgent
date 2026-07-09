@@ -71,10 +71,16 @@
     "parameters": {"type": "object", "properties": {}}}
   },
   {"type": "function", "function": {
-    "name": "mcp_call",
-    "description": "Call a tool on a connected MCP (Model Context Protocol) Server. Use get_system_prompt's MCP section to discover available servers and tools.",
+    "name": "get_skill_detail",
+    "description": "Lazy-load a skill's detail (progressive disclosure). Returns frontmatter summary (name, description, optional license/compatibility/metadata/allowed_tools), resource dir overview (has_scripts/has_references/has_assets), and skill_md_path. Use file_read on skill_md_path for full SKILL.md body. Call when a skill name in L1 looks relevant and you need to know what it does before reading the full file.",
     "parameters": {"type": "object", "properties": {
-      "server": {"type": "string", "description": "MCP Server name (from the [MCP] section in system prompt)"},
+      "name": {"type": "string", "description": "Skill name (as listed in L1 [Skills] section)"}}, "required": ["name"]}}
+  },
+  {"type": "function", "function": {
+    "name": "mcp_call",
+    "description": "Call a tool on a connected MCP (Model Context Protocol) Server. Available servers and tools are listed in the [MCP Servers] section of the system prompt. If no [MCP Servers] section appears, no MCP server is connected.",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "MCP Server name (see [MCP Servers] section in system prompt)"},
       "tool": {"type": "string", "description": "Tool name to call on that server"},
       "arguments": {"type": "object", "description": "Arguments dict for the tool", "default": {}}}, "required": ["server", "tool"]}}
   }

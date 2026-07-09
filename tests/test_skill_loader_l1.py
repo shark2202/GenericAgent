@@ -24,9 +24,20 @@ from skill_loader import (
     _replace_between_markers,
     _discover_skills,
     backup_and_patch_skill,
+    get_skill_detail,
+    _get_skills_catalog,
+    _reset_skill_cache,
     SKILL_START_MARKER,
     SKILL_END_MARKER,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_skill_cache_fixture():
+    """Reset mtime/catalog cache before and after each test (isolation)."""
+    _reset_skill_cache()
+    yield
+    _reset_skill_cache()
 
 
 # ── Unit tests ──────────────────────────────────────────────
@@ -363,3 +374,132 @@ def test_discover_skills_home_unset_uses_userprofile(tmp_path, monkeypatch):
     catalog = _discover_skills(cwd_skills_root=str(proj))
     assert "win-skill" in catalog
     assert str(skill_dir / "SKILL.md") == catalog["win-skill"][1]
+
+
+# ── get_skill_detail tests (progressive disclosure) ─────────────
+
+def test_get_skill_detail_returns_summary(tmp_path, monkeypatch):
+    """get_skill_detail returns frontmatter + resource overview + path."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skill_dir = skills_root / "my-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        '---\nname: my-skill\ndescription: "Does stuff"\nlicense: MIT\n---\n# Body\n'
+    )
+    (skill_dir / "scripts").mkdir()
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+
+    detail = get_skill_detail("my-skill")
+    assert detail['name'] == "my-skill"
+    assert detail['description'] == "Does stuff"
+    assert detail['license'] == "MIT"
+    assert detail['skill_md_path'].endswith("SKILL.md")
+    assert detail['has_scripts'] is True
+    assert detail['has_references'] is False
+    assert detail['has_assets'] is False
+
+
+def test_get_skill_detail_not_found(tmp_path, monkeypatch):
+    """Unknown skill name -> error dict with available list."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skill_dir = skills_root / "real"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text('---\nname: real\ndescription: "R"\n---\n')
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+
+    detail = get_skill_detail("nope")
+    assert detail['status'] == 'error'
+    assert 'not found' in detail['msg']
+    assert detail['available'] == ["real"]
+
+
+def test_get_skill_detail_missing_frontmatter(tmp_path, monkeypatch):
+    """SKILL.md without frontmatter -> defaults, no crash."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skill_dir = skills_root / "plain"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text('# just markdown\n')
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+
+    # _discover_skills skips no-frontmatter skills, so this skill won't be in catalog
+    detail = get_skill_detail("plain")
+    assert detail['status'] == 'error'
+
+
+# ── mtime cache tests ──────────────────────────────────────────
+
+def test_mtime_cache_skip_on_no_change(tmp_path, monkeypatch):
+    """Second sync with no changes -> cache hit, _discover_skills not recalled."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skill_dir = skills_root / "cached-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text('---\nname: cached-skill\ndescription: "C"\n---\n')
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+    l1_path = str(tmp_path / "l1.txt")
+
+    sync_skills_to_l1(l1_path=l1_path)
+    first_content = open(l1_path).read()
+    assert "cached-skill" in first_content
+
+    # Second call: no changes -> fresh, should skip rewrite
+    call_count = [0]
+    original = skill_loader._discover_skills
+
+    def counting_discover(*a, **kw):
+        call_count[0] += 1
+        return original(*a, **kw)
+
+    monkeypatch.setattr(skill_loader, '_discover_skills', counting_discover)
+    sync_skills_to_l1(l1_path=l1_path)
+    assert call_count[0] == 0  # cache hit, no rescan
+
+
+def test_mtime_cache_refresh_on_content_change(tmp_path, monkeypatch):
+    """SKILL.md content edited -> mtime changes -> rescan + rewrite."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skill_dir = skills_root / "edit-skill"
+    skill_dir.mkdir(parents=True)
+    md = skill_dir / "SKILL.md"
+    md.write_text('---\nname: edit-skill\ndescription: "v1"\n---\n')
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+    l1_path = str(tmp_path / "l1.txt")
+
+    sync_skills_to_l1(l1_path=l1_path)
+    assert "edit-skill" in open(l1_path).read()
+
+    # Edit content (description change) — but L1 cold only stores names, so
+    # verify via get_skill_detail that cache refreshes and picks up new desc
+    import time
+    md.write_text('---\nname: edit-skill\ndescription: "v2"\n---\n')
+    time.sleep(0.05)  # ensure mtime tick on coarse-resolution filesystems
+
+    detail = get_skill_detail("edit-skill")
+    assert detail['description'] == "v2"
+
+
+def test_mtime_cache_detects_add_remove(tmp_path, monkeypatch):
+    """Adding/removing a skill dir -> root mtime changes -> rescan."""
+    skills_root = tmp_path / "home" / ".agents" / "skills"
+    skills_root.mkdir(parents=True)
+    skill_dir = skills_root / "first"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text('---\nname: first\ndescription: "F"\n---\n')
+    monkeypatch.setattr(skill_loader, '_skill_roots', lambda *a, **k: [str(skills_root)])
+
+    catalog, _ = _get_skills_catalog()
+    assert "first" in catalog
+
+    # Add a new skill
+    import time
+    new_dir = skills_root / "second"
+    new_dir.mkdir()
+    (new_dir / "SKILL.md").write_text('---\nname: second\ndescription: "S"\n---\n')
+    time.sleep(0.05)
+
+    catalog2, fresh2 = _get_skills_catalog()
+    assert fresh2 is False
+    assert "second" in catalog2
+
+    # No further changes -> fresh
+    catalog3, fresh3 = _get_skills_catalog()
+    assert fresh3 is True

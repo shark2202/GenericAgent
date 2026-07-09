@@ -69,5 +69,19 @@
     "name": "start_long_term_update",
     "description": "准备开始提炼记忆。发现值得长期记忆的信息（环境事实/用户偏好/避坑经验）时调用此工具。已记忆更新或在自主流程内时无需调用。超15轮完成的任务必须调用以沉淀经验",
     "parameters": {"type": "object", "properties": {}}}
+  },
+  {"type": "function", "function": {
+    "name": "get_skill_detail",
+    "description": "懒加载某个 skill 的详情（渐进式披露）。返回 frontmatter 摘要（name、description、可选 license/compatibility/metadata/allowed_tools）、资源目录概览（has_scripts/has_references/has_assets）及 skill_md_path。需完整 SKILL.md 内容时用 file_read 读取 skill_md_path。当 L1 [Skills] 段中某 skill 名看起来相关、需先了解其功能再决定是否读全文时调用。",
+    "parameters": {"type": "object", "properties": {
+      "name": {"type": "string", "description": "skill 名称（L1 [Skills] 段中列出的名字）"}}, "required": ["name"]}}
+  },
+  {"type": "function", "function": {
+    "name": "mcp_call",
+    "description": "调用已连接的 MCP（Model Context Protocol）Server 上的工具。可用的 server 和工具列在系统提示词的 [MCP Servers] 段中。若未出现 [MCP Servers] 段，表示没有已连接的 MCP server。",
+    "parameters": {"type": "object", "properties": {
+      "server": {"type": "string", "description": "MCP Server 名称（见系统提示词中的 [MCP Servers] 段）"},
+      "tool": {"type": "string", "description": "要调用的工具名"},
+      "arguments": {"type": "object", "description": "该工具的参数字典", "default": {}}}, "required": ["server", "tool"]}}
   }
 ]

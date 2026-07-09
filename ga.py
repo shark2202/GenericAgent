@@ -7,7 +7,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from agent_loop import BaseHandler, StepOutcome, json_default
-from skill_loader import sync_skills_to_l1
+from skill_loader import sync_skills_to_l1, get_skill_detail
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 def safe_print(*args, **kwargs):
@@ -451,6 +451,21 @@ class GenericAgentHandler(BaseHandler):
         #next_prompt += '\n[SYSTEM TIPS] 此函数一般在任务开始或中间时调用，如果任务已成功完成应该是start_long_term_update用于结算长期记忆。\n'
         return StepOutcome({"result": "working key_info updated"}, next_prompt=next_prompt)
 
+    def do_get_skill_detail(self, args, response):
+        '''懒加载某个 skill 的详情（progressive disclosure）。返回 frontmatter 摘要 + 资源目录概览 + SKILL.md 路径。'''
+        name = args.get('name', '')
+        yield f"\n[Action] get_skill_detail: {name}\n"
+        try:
+            detail = get_skill_detail(name)
+        except Exception as e:
+            yield f"[Error] get_skill_detail failed: {e}\n"
+            return StepOutcome({'status': 'error', 'msg': str(e)}, next_prompt="\n")
+        yield f"[Skill Detail] {json.dumps(detail, ensure_ascii=False, indent=2)}\n"
+        next_prompt = self._get_anchor_prompt(skip=args.get('_index', 0) > 0)
+        if detail.get('status') != 'error':
+            next_prompt += "\n[SYSTEM TIPS] 已返回 skill 摘要与 SKILL.md 路径。如需完整内容请用 file_read 读取 skill_md_path。"
+        return StepOutcome(detail, next_prompt=next_prompt)
+
     def do_mcp_call(self, args, response):
         '''调用连接的 MCP (Model Context Protocol) Server 上的工具。通过 get_system_prompt 的 MCP 部分发现可用的 server 和工具。'''
         server = args.get('server', '')
@@ -531,6 +546,7 @@ class GenericAgentHandler(BaseHandler):
 **只能提取行动验证成功的信息**：
 - **环境事实**（路径/凭证/配置）→ `file_patch` 更新 L2，同步 L1
 - **复杂任务经验**（关键坑点/前置条件/重要步骤）→ L3 精简 SOP（只记你被坑得多次重试的核心要点）
+- **MCP 依赖标注**：若任务中调用了 mcp_call，先 `file_read memory/mcp_call_log.md` 查本次 server/tool，在生成的 SOP/Skill frontmatter 加 `mcp_dependencies: server/tool`
 **禁止**：临时变量、具体推理过程、未验证信息、通用常识、你可以轻松复现的细节、只是做了但没有验证的信息
 **操作**：严格遵循提供的L0的记忆更新SOP。先 `file_read` 看现有 → 判断类型 → 最小化更新 → 无新内容跳过，保证对记忆库最小局部修改。\n
 ''' + get_global_memory()

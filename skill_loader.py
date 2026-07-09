@@ -56,6 +56,20 @@ def _scan_dir(skills_root):
     return catalog
 
 
+def _skill_roots(cwd_skills_root=None):
+    """Return list of existing skills root dirs (user-level then project-level)."""
+    home = os.environ.get('HOME') or os.environ.get('USERPROFILE') or os.path.expanduser('~')
+    user_root = os.path.join(home, '.agents', 'skills') if home else None
+    cwd = cwd_skills_root or os.getcwd()
+    project_root = os.path.join(cwd, '.agents', 'skills')
+    roots = []
+    if user_root and os.path.isdir(user_root):
+        roots.append(user_root)
+    if os.path.isdir(project_root):
+        roots.append(project_root)
+    return roots
+
+
 def _discover_skills(cwd_skills_root=None):
     """Discover all skills: user-level + project-level (project overrides same-name).
 
@@ -65,16 +79,164 @@ def _discover_skills(cwd_skills_root=None):
     Returns:
         {name: (description, abs_skill_md_path)} dict, possibly empty.
     """
-    home = os.environ.get('HOME') or os.environ.get('USERPROFILE') or os.path.expanduser('~')
-    user_root = os.path.join(home, '.agents', 'skills') if home else None
-    cwd = cwd_skills_root or os.getcwd()
-    project_root = os.path.join(cwd, '.agents', 'skills')
-
     catalog = {}
-    if user_root:
-        catalog.update(_scan_dir(user_root))
-    catalog.update(_scan_dir(project_root))
+    for root in _skill_roots(cwd_skills_root):
+        catalog.update(_scan_dir(root))
     return catalog
+
+
+_SKILL_CATALOG_CACHE = None
+_SKILL_MTIME_CACHE = None
+
+
+def _compute_skill_mtimes(catalog):
+    """Snapshot mtimes for skill roots and each SKILL.md in catalog."""
+    root_mtimes = {}
+    for r in _skill_roots():
+        try:
+            root_mtimes[r] = os.stat(r).st_mtime
+        except OSError:
+            pass
+    file_mtimes = {}
+    for _name, (_desc, path) in catalog.items():
+        try:
+            file_mtimes[path] = os.stat(path).st_mtime
+        except OSError:
+            pass
+    return {'roots': root_mtimes, 'files': file_mtimes}
+
+
+def _check_skill_mtimes(cached):
+    """Return True if cached root set + all root/file mtimes unchanged."""
+    try:
+        current_roots = set(_skill_roots())
+    except Exception:
+        return False
+    if current_roots != set(cached['roots'].keys()):
+        return False
+    for r, mtime in cached['roots'].items():
+        try:
+            if os.stat(r).st_mtime != mtime:
+                return False
+        except OSError:
+            return False
+    for path, mtime in cached['files'].items():
+        try:
+            if os.stat(path).st_mtime != mtime:
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _get_skills_catalog():
+    """Return (catalog, fresh). Uses mtime cache to skip rescan when unchanged.
+
+    fresh=True  -> cached catalog reused (no rescan, no IO rewrite needed).
+    fresh=False -> catalog just rescanned (cold start or detected changes).
+    """
+    global _SKILL_CATALOG_CACHE, _SKILL_MTIME_CACHE
+
+    if _SKILL_CATALOG_CACHE is None or _SKILL_MTIME_CACHE is None:
+        catalog = _discover_skills()
+        _SKILL_CATALOG_CACHE = catalog
+        _SKILL_MTIME_CACHE = _compute_skill_mtimes(catalog)
+        return catalog, False
+
+    if _check_skill_mtimes(_SKILL_MTIME_CACHE):
+        return _SKILL_CATALOG_CACHE, True
+
+    catalog = _discover_skills()
+    _SKILL_CATALOG_CACHE = catalog
+    _SKILL_MTIME_CACHE = _compute_skill_mtimes(catalog)
+    return catalog, False
+
+
+def _reset_skill_cache():
+    """Clear the mtime/catalog cache (for tests or forced refresh)."""
+    global _SKILL_CATALOG_CACHE, _SKILL_MTIME_CACHE
+    _SKILL_CATALOG_CACHE = None
+    _SKILL_MTIME_CACHE = None
+
+
+def _parse_full_frontmatter(skill_md_path):
+    """Parse all frontmatter fields per agentskills.io spec.
+
+    Returns dict with any of: name, description, license, compatibility,
+    metadata, allowed_tools. Missing/absent fields are omitted.
+    """
+    try:
+        with open(skill_md_path, encoding='utf-8') as f:
+            content = f.read(4096)
+    except Exception:
+        return {}
+    if not content.startswith('---'):
+        return {}
+    end = content.find('---', 3)
+    if end == -1:
+        return {}
+    fm = content[3:end]
+    result = {}
+
+    def _field(key, fm_text):
+        m = re.search(r'^' + re.escape(key) + r':\s*(.+)', fm_text, re.MULTILINE)
+        if m:
+            return m.group(1).strip().strip('"').strip("'")
+        return None
+
+    name = _field('name', fm)
+    if name:
+        result['name'] = name
+    desc = _field('description', fm)
+    if desc:
+        result['description'] = desc
+    license_ = _field('license', fm)
+    if license_:
+        result['license'] = license_
+    compat = _field('compatibility', fm)
+    if compat:
+        result['compatibility'] = compat
+    allowed = _field('allowed-tools', fm)
+    if allowed:
+        result['allowed_tools'] = allowed
+    meta = _field('metadata', fm)
+    if meta:
+        result['metadata'] = meta
+    return result
+
+
+def get_skill_detail(name):
+    """Lazy-load a single skill's detail (progressive disclosure).
+
+    Per agentskills.io spec: returns Metadata-layer fields (name, description,
+    plus optional license/compatibility/metadata/allowed_tools), a Resources
+    overview (has_scripts/has_references/has_assets), and the Instructions
+    entry point (skill_md_path). Use file_read on skill_md_path for full body.
+
+    Args:
+        name: Skill name (frontmatter name key).
+
+    Returns:
+        dict. On unknown name: {'status': 'error', 'msg': ..., 'available': [...]}.
+    """
+    catalog, _ = _get_skills_catalog()
+    if name not in catalog:
+        return {
+            'status': 'error',
+            'msg': f"Skill '{name}' not found.",
+            'available': sorted(catalog.keys()),
+        }
+    desc, skill_md_path = catalog[name]
+    detail = {'name': name, 'description': desc, 'skill_md_path': skill_md_path}
+    fm = _parse_full_frontmatter(skill_md_path)
+    for k in ('license', 'compatibility', 'metadata', 'allowed_tools'):
+        if k in fm:
+            detail[k] = fm[k]
+    skill_dir = os.path.dirname(skill_md_path)
+    detail['has_scripts'] = os.path.isdir(os.path.join(skill_dir, 'scripts'))
+    detail['has_references'] = os.path.isdir(os.path.join(skill_dir, 'references'))
+    detail['has_assets'] = os.path.isdir(os.path.join(skill_dir, 'assets'))
+    return detail
 
 
 def _replace_between_markers(filepath, start_marker, end_marker, new_content):
@@ -123,7 +285,10 @@ def sync_skills_to_l1(l1_path=None):
     """
     l1_path = l1_path or os.path.join(script_dir, 'memory', 'global_mem_insight.txt')
 
-    catalog = _discover_skills()
+    # mtime cache skips expensive _discover_skills rescan when unchanged.
+    # L1 rewrite always runs: hot/cold classification depends on experience
+    # files (memory/skill_exp_*.md) which are NOT tracked by the mtime cache.
+    catalog, _fresh = _get_skills_catalog()
 
     hot_entries = []
     cold_names = []
