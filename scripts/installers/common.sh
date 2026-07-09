@@ -44,13 +44,25 @@ ga_arch_os(){
   esac
 }
 
+# True if running under WSL (Linux userspace on the Windows kernel). WSL
+# interop can execute Windows .exe, so a WSL host can build win-x64 bundles
+# too (bundle-python.sh runs the target python.exe via interop).
+ga_is_wsl(){
+  [[ -r /proc/version ]] && grep -qi 'microsoft\|wsl' /proc/version
+}
+
 # Refuse to build an arch that doesn't match the host OS family.
-# (bundle-python.sh is host-bound: Win can't build mac python, etc.)
+# (bundle-python.sh is host-bound: a pure Win host can't run mac python, etc.)
+# WSL-on-Windows is special: Linux userspace but Windows kernel + interop,
+# so it can build both linux-x64 and win-x64.
 ga_assert_host_can_build(){
   local arch="$1" host os
   host=$(ga_host_os)
   os=$(ga_arch_os "$arch")
-  [[ "$host" == "$os" ]] || die "host OS '$host' cannot build arch '$arch' (needs $os host)"
+  [[ "$host" == "$os" ]] && return 0
+  # WSL-on-Windows: Linux userspace but Windows kernel + interop → can run win .exe
+  [[ "$host" == "linux" && "$os" == "win" ]] && ga_is_wsl && return 0
+  die "host OS '$host' cannot build arch '$arch' (needs $os host)"
 }
 
 # Require a command on PATH, else die.

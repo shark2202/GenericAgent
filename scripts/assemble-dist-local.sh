@@ -117,9 +117,13 @@ ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}.${ARCHIVE_EXT}"
 
 say "creating archive: ${ARCHIVE_PATH}"
 if [[ "$ARCHIVE_EXT" == "zip" ]]; then
-  # bsdtar (Windows 10+ ships it; also available on macOS via libarchive).
-  # -a auto-detects format from the .zip extension.
-  tar -a -c -f "$ARCHIVE_PATH" -C "$STAGE" GenericAgent
+  # .zip: GNU tar can't write it. Prefer `zip` if present (WSL/Linux/macOS);
+  # else bsdtar `tar -a` (Windows System32 tar.exe = bsdtar, macOS libarchive).
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$STAGE" && zip -qr "$ARCHIVE_PATH" GenericAgent)
+  else
+    tar -a -c -f "$ARCHIVE_PATH" -C "$STAGE" GenericAgent
+  fi
 else
   tar -czf "$ARCHIVE_PATH" -C "$STAGE" GenericAgent
 fi

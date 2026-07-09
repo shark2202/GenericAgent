@@ -93,7 +93,15 @@ case "$ARCH" in
     # Extract the portable archive into a staging dir; ISCC packs it.
     STAGE="$WORK/stage"
     mkdir -p "$STAGE"
-    tar -xf "$SRC_ARCHIVE" -C "$STAGE"   # → $STAGE/GenericAgent/
+    # Extract portable archive (zip for win, tar.gz for mac/linux) into staging.
+    case "$SRC_ARCHIVE" in
+      *.zip)
+        if command -v unzip >/dev/null 2>&1; then unzip -q "$SRC_ARCHIVE" -d "$STAGE"
+        elif command -v bsdtar >/dev/null 2>&1; then bsdtar -xf "$SRC_ARCHIVE" -C "$STAGE"
+        else tar -xf "$SRC_ARCHIVE" -C "$STAGE"   # tar=bsdtar on Win/macOS
+        fi ;;
+      *) tar -xf "$SRC_ARCHIVE" -C "$STAGE" ;;
+    esac   # → $STAGE/GenericAgent/
 
     # Place a branded icon at the payload root for the .lnk shortcuts.
     cp "$REPO_ROOT/frontends/desktop/src-tauri/icons/icon.ico" \
@@ -101,10 +109,18 @@ case "$ARCH" in
 
     OUT_DIR="$REPO_ROOT/dist/release"
     mkdir -p "$OUT_DIR"
+    # VersionInfoVersion must be 4-part numeric (x.y.z.w); dev suffixes like
+    # "+g<sha>.dirty" are illegal there. Strip suffix and pad to 4 parts.
+    # AppVersion (display string) keeps the full version incl. dev suffix.
+    ver_base="${VERSION%%[+-]*}"
+    IFS=. read -ra _vp <<< "$ver_base"
+    while (( ${#_vp[@]} < 4 )); do _vp+=(0); done
+    VERSION_NUM="${_vp[0]}.${_vp[1]}.${_vp[2]}.${_vp[3]}"
     say "running ISCC..."
     "$ISCC" /Q \
       /DSourceRoot="$(to_win "$STAGE")" \
       /DAppVersion="$VERSION" \
+      /DVersionInfoVersion="$VERSION_NUM" \
       /DAppArch="$ARCH" \
       /O"$(to_win "$OUT_DIR")" \
       /F"GenericAgent-$VERSION-$ARCH" \

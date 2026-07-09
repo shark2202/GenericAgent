@@ -26,13 +26,19 @@
 
 #define AppName      "GenericAgent"
 #define AppPublisher "GenericAgent"
+; VersionInfoVersion must be 4-part numeric (x.y.z.w). build-installer.sh passes
+; it via /D; fall back to 0.0.0.0 if ISCC is run standalone without the define.
+; AppVersion (display) may carry a dev suffix; VersionInfoVersion must not.
+#ifndef VersionInfoVersion
+  #define VersionInfoVersion "0.0.0.0"
+#endif
 
 [Setup]
 AppId={{GenericAgent-Install}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#VersionInfoVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -114,7 +120,7 @@ begin
     if (Path <> '') and (Path[Length(Path)] <> ';') then
       Path := Path + ';';
     Path := Path + AppDir;
-    RegWriteExStringValue(RootKey, SubKey, 'Path', Path);
+    RegWriteStringValue(RootKey, SubKey, 'Path', Path);
   end;
 end;
 
@@ -136,7 +142,7 @@ begin
     Delete(Path, P, Length(AppDir) + 1);
   end else if Path = AppDir then
     Path := '';
-  RegWriteExStringValue(RootKey, SubKey, 'Path', Path);
+  RegWriteStringValue(RootKey, SubKey, 'Path', Path);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
