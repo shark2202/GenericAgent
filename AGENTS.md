@@ -27,11 +27,19 @@
 
 - **构建检查**：`cargo check`
 
+## Shell 脚本（`scripts/`）
+
+- **Lint**：`shellcheck scripts/*.sh scripts/installers/*.sh`（需先装 shellcheck；Windows 可 `choco install shellcheck` 或用 WSL/git-bash 自带）。新脚本应保证不引入新违规。
+
 ## Release / 分发
 
 - **便携分发包**：推 `v*` tag 触发 `.github/workflows/release.yml`（4 架构交叉构建，产出含自包含 CPython 运行时的 portable archive）。
-- **本地组装**：`scripts/assemble-dist-local.sh`。
+  > **计划废弃**：本地安装器方案落地后将停用此 CI，改用下面的 `release-local.sh`（见 `docs/plans/2026-07-09-local-installer-packaging-design.md`）。
+- **本地组装**：`scripts/assemble-dist-local.sh`（version 默认从 `pyproject.toml` 读，off-tag 加 `+g<sha>[.dirty]`）。
 - **Python 运行时打包**：`scripts/bundle-python.sh <arch>`（arch ∈ win-x64 / mac-arm64 / mac-x64 / linux-x64）。
+- **本地一键发布**：`scripts/release-local.sh <arch> [--dry-run]`（bundle → assemble → build-installer；`--dry-run` 只到压缩包）。
+- **安装器构建**：`scripts/build-installer.sh <arch>`（Win=Inno `.exe`、mac=`.pkg`、Linux=`.deb`+`.rpm`）。
+- **安装器验收**：见 `scripts/installers/TESTING.md`（每版本人工 checklist）。
 
 ## 暂未启用
 

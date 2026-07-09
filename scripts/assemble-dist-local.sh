@@ -9,7 +9,7 @@
 # Usage:
 #   ./scripts/assemble-dist-local.sh <arch> [version]
 #     arch   ∈ {win-x64, mac-arm64, mac-x64, linux-x64}
-#     version defaults to "snapshot"
+#     version defaults to pyproject [project].version (+ dev suffix off-tag)
 #
 # Prereq:
 #   ./scripts/bundle-python.sh <arch>   # must have run successfully first
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 ARCH="${1:-win-x64}"
-VERSION="${2:-snapshot}"
+VERSION="${2:-}"
 
 case "$ARCH" in
   win-x64)                ARCHIVE_EXT=zip ;;
@@ -29,6 +29,24 @@ case "$ARCH" in
 esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Default version: read from pyproject.toml [project].version; add a dev
+# suffix (+g<sha7>[.dirty]) when not on the matching release tag, so local
+# builds never collide with a clean release. Explicit $2 always wins.
+if [[ -z "$VERSION" ]]; then
+  _PP="${REPO_ROOT}/pyproject.toml"
+  VERSION=$(grep -E '^version[[:space:]]*=' "$_PP" | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+  [[ -n "$VERSION" ]] || { echo "could not parse version from $_PP" >&2; exit 1; }
+  if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    _tag=$(git -C "$REPO_ROOT" describe --tags --exact-match HEAD 2>/dev/null || true)
+    if [[ "$_tag" != "v${VERSION}" ]]; then
+      _sha=$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD)
+      _dirty=""; [[ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]] && _dirty=".dirty"
+      VERSION="${VERSION}+g${_sha}${_dirty}"
+    fi
+  fi
+fi
+
 BUNDLE_DIR="${REPO_ROOT}/dist/python-bundle/${ARCH}/python"
 
 if [[ ! -d "$BUNDLE_DIR" ]]; then
