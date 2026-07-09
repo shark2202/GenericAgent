@@ -10,3 +10,4 @@
 - [x] tests/test_skill_loader_l1.py: autouse fixture 重置缓存 + get_skill_detail 3 测试 + mtime 缓存 3 测试
 - [x] 验证: pytest 26/26 PASS, ruff 无新违规
 - [x] 勾选完成 + 提交
+- [x] tests/test_mcp_ga_integration.py: do_get_skill_detail 集成测试 6 个（do_ success/not_found/exception + dispatch 端到端 + 双 schema 同步）— gap 收窄
