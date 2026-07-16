@@ -168,3 +168,6 @@ ga_rust/target/
 *.pyc
 # GA data dir
 .ga_data/
+# GA worktrees (subagent isolation)
+.worktrees/
+.ga/
