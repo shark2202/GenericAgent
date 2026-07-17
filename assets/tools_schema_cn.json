@@ -83,5 +83,15 @@
       "server": {"type": "string", "description": "MCP Server 名称（见系统提示词中的 [MCP Servers] 段）"},
       "tool": {"type": "string", "description": "要调用的工具名"},
       "arguments": {"type": "object", "description": "该工具的参数字典", "default": {}}}, "required": ["server", "tool"]}}
+  },
+  {"type": "function", "function": {
+    "name": "skill_manage",
+    "description": "自进化用：管理 agent 自己的 skill（create/patch/retire/list_evolvable）。patch 与 retire 只能作用于 frontmatter 中 author=agent 或 evolvable:true 的 skill；用户创作的 skill 只读。patch 前自动存 .prev 快照（回滚：file_read <skill_md_path>.prev 后再次 patch）。需环境变量 GA_SKILL_EVOLUTION_ENABLED=1。传 dry_run=true 可仅校验 SKILL.md 不落盘。蒸馏回路以完整替换的 SKILL.md 内容调用（frontmatter 含 author/evolvable/evolved_from/version，正文含 ## 标题）。",
+    "parameters": {"type": "object", "properties": {
+      "action": {"type": "string", "enum": ["create", "patch", "retire", "list_evolvable"], "description": "create=新建 skill 目录与 SKILL.md；patch=替换某个可进化 skill 的 SKILL.md；retire=置 evolvable:false（保留文件）；list_evolvable=列出 author=agent 的 skill"},
+      "name": {"type": "string", "description": "skill 名（frontmatter name）。create/patch/retire 必填；list_evolvable 忽略"},
+      "skill_md": {"type": "string", "description": "create/patch 用的完整 SKILL.md 内容（frontmatter+正文）。必须含 provenance frontmatter（author: agent、evolvable、evolved_from、version）。retire/list_evolvable 省略"},
+      "reason": {"type": "string", "description": "简短理由，记入 evolved_from/version provenance。建议填写"},
+      "dry_run": {"type": "boolean", "description": "仅校验 skill_md（结构+provenance），不落盘", "default": false}}, "required": ["action"]}}
   }
 ]

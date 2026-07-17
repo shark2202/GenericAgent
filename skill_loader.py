@@ -1,4 +1,5 @@
 """Skill loader: discover skills and sync to L1 memory index."""
+import difflib
 import os
 import re
 import shutil
@@ -328,3 +329,147 @@ def backup_and_patch_skill(skill_md_path, patch_content=None):
     bak_path = skill_md_path + '.bak'
     if not os.path.exists(bak_path):
         shutil.copy2(skill_md_path, bak_path)
+
+
+# ── Self-evolution: provenance / validation / retrieval / revert ───────────
+# These back the post-task skill-distillation loop (see
+# hermes/workflows/post-task-skill-distillation.md). Pure helpers, no global
+# state mutation; the distillation plugin orchestrates them.
+
+def _read_frontmatter_block(skill_md_path, limit=4096):
+    """Return the raw frontmatter text (between the --- fences), or None."""
+    try:
+        with open(skill_md_path, encoding='utf-8') as f:
+            content = f.read(limit)
+    except Exception:
+        return None
+    if not content.startswith('---'):
+        return None
+    end = content.find('---', 3)
+    if end == -1:
+        return None
+    return content[3:end]
+
+
+def _fm_field(key, fm):
+    """Read a single frontmatter field value (stripped/quoted), or None."""
+    m = re.search(r'^' + re.escape(key) + r':\s*(.+)', fm, re.MULTILINE)
+    return m.group(1).strip().strip('"').strip("'") if m else None
+
+
+def _parse_bool(s, default=False):
+    if s is None:
+        return default
+    return s.strip().lower() in ('true', '1', 'yes', 'on')
+
+
+def _parse_inline_list(s):
+    """Parse a YAML-ish inline list '[a, b]' or a bare comma list into [str, ...]."""
+    if not s:
+        return []
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    if not s.strip():
+        return []
+    return [x.strip().strip('"').strip("'") for x in s.split(',') if x.strip()]
+
+
+def parse_provenance(skill_md_path):
+    """Read self-evolution provenance fields from a SKILL.md frontmatter.
+
+    Returns dict: author, evolvable, evolved_from, version, created_at,
+    mcp_dependencies, fitness. Defaults: author='user'; evolvable derives
+    from author (True iff author=='agent') when unset; lists default to [].
+    A file with no frontmatter returns defaults with evolvable=False.
+    """
+    fm = _read_frontmatter_block(skill_md_path)
+    if fm is None:
+        return {'author': 'user', 'evolvable': False, 'evolved_from': None,
+                'version': None, 'created_at': None, 'mcp_dependencies': [], 'fitness': None}
+    author = _fm_field('author', fm) or 'user'
+    evolvable = _parse_bool(_fm_field('evolvable', fm), default=(author == 'agent'))
+    return {
+        'author': author,
+        'evolvable': evolvable,
+        'evolved_from': _fm_field('evolved_from', fm),
+        'version': _fm_field('version', fm),
+        'created_at': _fm_field('created_at', fm),
+        'mcp_dependencies': _parse_inline_list(_fm_field('mcp_dependencies', fm)),
+        'fitness': _fm_field('fitness', fm),
+    }
+
+
+def validate_skill(skill_md_path):
+    """Structural validation for a candidate SKILL.md.
+
+    Returns (ok, reason). ok=True iff frontmatter has name+description,
+    description length <= 120, and the body has >=1 '## ' heading. Purely
+    structural; does not depend on the catalog cache, so it works on a
+    freshly-written skill before it is discovered/indexed.
+    """
+    name, desc = _parse_skill_frontmatter(skill_md_path)
+    if not name:
+        return False, "frontmatter missing name"
+    if not desc:
+        return False, "frontmatter missing description"
+    if len(desc) > 120:
+        return False, f"description too long ({len(desc)} > 120)"
+    try:
+        with open(skill_md_path, encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        return False, f"read error: {e}"
+    body = content
+    if content.startswith('---'):
+        end = content.find('---', 3)
+        if end != -1:
+            body = content[end + 3:]
+    if not re.search(r'^##\s', body, re.MULTILINE):
+        return False, "body has no '## ' heading"
+    return True, ""
+
+
+def retrieve_skill_by_desc(desc, catalog=None):
+    """Find the existing skill whose name+description best matches `desc`.
+
+    v1: difflib SequenceMatcher over lowercased "name description".
+    Returns the best-matching skill name if ratio > 0.5, else None. Pass an
+    explicit `catalog` ({name: (description, path)}) to bypass the global cache.
+    """
+    if not desc:
+        return None
+    if catalog is None:
+        catalog, _ = _get_skills_catalog()
+    target = desc.lower()
+    best_name, best_ratio = None, 0.0
+    for name, (skill_desc, _path) in catalog.items():
+        candidate = f"{name} {skill_desc}".lower()
+        ratio = difflib.SequenceMatcher(None, target, candidate).ratio()
+        if ratio > best_ratio:
+            best_name, best_ratio = name, ratio
+    return best_name if best_ratio > 0.5 else None
+
+
+def backup_skill_prev(skill_md_path):
+    """Snapshot current SKILL.md to `<path>.prev` (overwrites prior snapshot).
+
+    Used by the self-evolution loop before an autonomous patch, enabling
+    one-step revert. Pure backup (no SKILL.md mutation); the write itself is
+    gated elsewhere (do_skill_manage / GA_SKILL_EVOLUTION_ENABLED).
+    Returns the .prev path on success, None if source missing.
+    """
+    if not os.path.isfile(skill_md_path):
+        return None
+    prev = skill_md_path + '.prev'
+    shutil.copy2(skill_md_path, prev)
+    return prev
+
+
+def revert_skill_prev(skill_md_path):
+    """Restore SKILL.md from its `.prev` snapshot. Returns True on revert."""
+    prev = skill_md_path + '.prev'
+    if not os.path.isfile(prev):
+        return False
+    shutil.copy2(prev, skill_md_path)
+    return True

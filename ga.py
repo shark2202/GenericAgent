@@ -7,7 +7,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from agent_loop import BaseHandler, StepOutcome, json_default
-from skill_loader import sync_skills_to_l1, get_skill_detail
+from skill_loader import sync_skills_to_l1, get_skill_detail, parse_provenance, validate_skill, backup_skill_prev, revert_skill_prev, _get_skills_catalog, _reset_skill_cache
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 def safe_print(*args, **kwargs):
@@ -272,6 +272,8 @@ class GenericAgentHandler(BaseHandler):
         self.history_info = last_history if last_history else []
         self.code_stop_signal = []
         self._done_hooks = []
+        self._pending_briefs = []        # self-evolution: queued skill-distillation briefs (flushed at turn%10 / task end)
+        self._evolution_signal = None    # self-evolution: accumulated negative signal (errors/retries/corrections) for v1.5 trigger
         self.print = safe_print
 
     def _get_abs_path(self, path):
@@ -466,6 +468,192 @@ class GenericAgentHandler(BaseHandler):
             next_prompt += "\n[SYSTEM TIPS] 已返回 skill 摘要与 SKILL.md 路径。如需完整内容请用 file_read 读取 skill_md_path。"
         return StepOutcome(detail, next_prompt=next_prompt)
 
+    def do_skill_manage(self, args, response):
+        '''自进化：管理 agent 自己的 skill（create/patch/retire/list_evolvable）。
+        patch/retire 仅作用于 author=agent 且 evolvable 的技能；用户创作技能只读。
+        patch/create 写前自动 .prev 备份；写动作需 GA_SKILL_EVOLUTION_ENABLED=1（list_evolvable/dry_run 豁免）。'''
+        action = args.get('action', '')
+        name = args.get('name', '')
+        skill_md = args.get('skill_md', '')
+        reason = args.get('reason', '')
+        dry_run = bool(args.get('dry_run', False))
+        idx = args.get('_index', 0)
+        yield f"\n[Action] skill_manage: {action} {name}\n"
+
+        if action == 'list_evolvable':
+            try:
+                catalog, _ = _get_skills_catalog()
+            except Exception as e:
+                return StepOutcome({'status': 'error', 'msg': f'catalog: {e}'}, next_prompt="\n")
+            owned = []
+            for nm, (_desc, path) in catalog.items():
+                try:
+                    prov = parse_provenance(path)
+                except Exception:
+                    continue
+                if prov.get('author') == 'agent' and prov.get('evolvable'):
+                    owned.append({'name': nm, 'version': prov.get('version'), 'evolved_from': prov.get('evolved_from'), 'path': path})
+            yield f"[Skill Manage] {len(owned)} evolvable agent skill(s)\n"
+            return StepOutcome({'status': 'ok', 'evolvable_skills': owned, 'count': len(owned)}, next_prompt=self._get_anchor_prompt(skip=idx > 0))
+
+        if action not in ('create', 'patch', 'retire'):
+            return StepOutcome({'status': 'error', 'msg': f'unknown action: {action}'}, next_prompt="\n")
+
+        if os.environ.get('GA_SKILL_EVOLUTION_ENABLED') != '1':
+            msg = "skill_manage writes require GA_SKILL_EVOLUTION_ENABLED=1 (opt into self-evolution). list_evolvable/dry_run are exempt."
+            yield f"[Skill Manage] {msg}\n"
+            return StepOutcome({'status': 'disabled', 'msg': msg}, next_prompt="\n")
+
+        if action == 'create':
+            if not name:
+                return StepOutcome({'status': 'error', 'msg': 'create requires name'}, next_prompt="\n")
+            if not skill_md:
+                return StepOutcome({'status': 'error', 'msg': 'create requires skill_md'}, next_prompt="\n")
+            try:
+                catalog, _ = _get_skills_catalog()
+            except Exception:
+                catalog = {}
+            if name in catalog:
+                return StepOutcome({'status': 'error', 'msg': f'skill {name} already exists; use action=patch'}, next_prompt="\n")
+            if dry_run:
+                ok, why = self._validate_skill_content(skill_md)
+                return StepOutcome({'status': 'ok' if ok else 'invalid', 'reason': why, 'dry_run': True}, next_prompt="\n")
+            skills_root = os.path.abspath(os.path.join(self.cwd, '.agents', 'skills'))
+            skill_dir = os.path.join(skills_root, name)
+            path = os.path.join(skill_dir, 'SKILL.md')
+            try:
+                os.makedirs(skill_dir, exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(skill_md)
+            except Exception as e:
+                return StepOutcome({'status': 'error', 'msg': f'write: {e}'}, next_prompt="\n")
+            ok, why = validate_skill(path)
+            if not ok:
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+                try:
+                    os.rmdir(skill_dir)
+                except Exception:
+                    pass
+                _reset_skill_cache()
+                return StepOutcome({'status': 'invalid', 'reason': why}, next_prompt="\n")
+            _reset_skill_cache()
+            try:
+                sync_skills_to_l1()
+            except Exception:
+                pass
+            yield f"[Skill Manage] created {name} at {path}\n"
+            self._pending_briefs.append(self._build_skill_brief('create', name, reason, path))
+            return StepOutcome({'status': 'ok', 'action': 'create', 'name': name, 'path': path}, next_prompt=self._get_anchor_prompt(skip=idx > 0))
+
+        # patch / retire: operate on the existing skill at its catalog path
+        try:
+            catalog, _ = _get_skills_catalog()
+        except Exception as e:
+            return StepOutcome({'status': 'error', 'msg': f'catalog: {e}'}, next_prompt="\n")
+        if name not in catalog:
+            return StepOutcome({'status': 'error', 'msg': f'skill {name} not found'}, next_prompt="\n")
+        _desc, path = catalog[name]
+        try:
+            prov = parse_provenance(path)
+        except Exception as e:
+            return StepOutcome({'status': 'error', 'msg': f'provenance: {e}'}, next_prompt="\n")
+
+        # provenance gate: user-authored or non-evolvable skills are read-only
+        if prov.get('author') == 'user' or not prov.get('evolvable'):
+            suggestion = f"[suggest] {name} is author={prov.get('author')}/evolvable={prov.get('evolvable')}; not editable via skill_manage. Draft the proposed SKILL.md and present it as a suggestion to the user instead of overwriting."
+            yield suggestion + "\n"
+            return StepOutcome({'status': 'protected', 'name': name, 'author': prov.get('author'), 'msg': suggestion}, next_prompt="\n")
+
+        if action == 'retire':
+            backup_skill_prev(path)
+            try:
+                with open(path, encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                return StepOutcome({'status': 'error', 'msg': f'read: {e}'}, next_prompt="\n")
+            new_content = self._set_frontmatter_flag(content, 'evolvable', 'false')
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+            except Exception as e:
+                revert_skill_prev(path)
+                return StepOutcome({'status': 'error', 'msg': f'write: {e}'}, next_prompt="\n")
+            _reset_skill_cache()
+            try:
+                sync_skills_to_l1()
+            except Exception:
+                pass
+            yield f"[Skill Manage] retired {name} (evolvable=false, file kept)\n"
+            self._pending_briefs.append(self._build_skill_brief('retire', name, reason, path))
+            return StepOutcome({'status': 'ok', 'action': 'retire', 'name': name, 'path': path}, next_prompt=self._get_anchor_prompt(skip=idx > 0))
+
+        # action == 'patch'
+        if not skill_md:
+            return StepOutcome({'status': 'error', 'msg': 'patch requires skill_md (full replacement)'}, next_prompt="\n")
+        if dry_run:
+            ok, why = self._validate_skill_content(skill_md)
+            return StepOutcome({'status': 'ok' if ok else 'invalid', 'reason': why, 'dry_run': True}, next_prompt="\n")
+        backup_skill_prev(path)
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(skill_md)
+        except Exception as e:
+            return StepOutcome({'status': 'error', 'msg': f'write: {e}'}, next_prompt="\n")
+        ok, why = validate_skill(path)
+        if not ok:
+            revert_skill_prev(path)
+            _reset_skill_cache()
+            return StepOutcome({'status': 'invalid', 'reason': why, 'reverted': True}, next_prompt="\n")
+        _reset_skill_cache()
+        try:
+            sync_skills_to_l1()
+        except Exception:
+            pass
+        yield f"[Skill Manage] patched {name} (.prev saved)\n"
+        self._pending_briefs.append(self._build_skill_brief('patch', name, reason, path))
+        return StepOutcome({'status': 'ok', 'action': 'patch', 'name': name, 'path': path}, next_prompt=self._get_anchor_prompt(skip=idx > 0))
+
+    def _validate_skill_content(self, skill_md):
+        '''Validate SKILL.md content without touching the target path (dry_run).'''
+        import tempfile
+        fd, tmp = tempfile.mkstemp(suffix='.md')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(skill_md)
+            return validate_skill(tmp)
+        finally:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+
+    def _set_frontmatter_flag(self, content, key, value):
+        '''Set a frontmatter field to `value` (replace if present, else append). No-op without frontmatter.'''
+        if not content.startswith('---'):
+            return content
+        end = content.find('---', 3)
+        if end == -1:
+            return content
+        fm = content[3:end]
+        pat = re.compile(r'^' + re.escape(key) + r':\s*.*$', re.MULTILINE)
+        if pat.search(fm):
+            fm = pat.sub(f'{key}: {value}', fm)
+        else:
+            fm = fm.rstrip('\n') + f'\n{key}: {value}\n'
+        return '---' + fm + content[end:]
+
+    def _build_skill_brief(self, action, name, reason, path):
+        '''One-line brief queued for the turn%10 / task-end flush (self-evolution feedback to the user).'''
+        why = f" — {reason}" if reason else ""
+        try:
+            rel = os.path.relpath(path, self.cwd)
+        except Exception:
+            rel = path
+        return f"\n📌[Skill蒸馏] {action} `{name}`{why} — file_read `{rel}` 查看；.prev 已备份 [approve|edit|revert]"
+
     def do_mcp_call(self, args, response):
         '''调用连接的 MCP (Model Context Protocol) Server 上的工具。通过 get_system_prompt 的 MCP 部分发现可用的 server 和工具。'''
         server = args.get('server', '')
@@ -554,6 +742,20 @@ class GenericAgentHandler(BaseHandler):
         path = './memory/memory_management_sop.md'
         if os.path.exists(path): result = 'This is L0:\n' + file_read(path, show_linenos=False)
         else: result = "Memory Management SOP not found. Do not update memory."
+        # spec v1 手动入口：保留 L2/L3 更新语义，额外触发 skill 蒸馏（foreground origin, 后台 spawn）
+        _client = getattr(self, 'client', None)
+        if _client is not None and os.environ.get('GA_SKILL_EVOLUTION_ENABLED') == '1':
+            try:
+                import plugins.skill_evolution as _se
+                def _manual():
+                    tok = _se.skill_write_origin.set('foreground')
+                    try:
+                        _se.distill(_client, self, signal='manual')
+                    finally:
+                        _se.skill_write_origin.reset(tok)
+                threading.Thread(target=_manual, daemon=True).start()
+            except Exception:
+                pass
         return StepOutcome(result, next_prompt=prompt)
 
     def _fold_earlier(self, lines):
@@ -612,6 +814,10 @@ class GenericAgentHandler(BaseHandler):
         if injprompt: next_prompt += f"\n\n[MASTER] {injprompt}\n"
         self.parent.intervene = self.parent.extrakeyinfo = None
         for hook in list(getattr(self.parent, '_turn_end_hooks', {}).values()): hook(locals())  # current readonly
+        # self-evolution: flush queued skill-distillation briefs (batch at turn%10, force at task end)
+        if self._pending_briefs and (turn % 10 == 0 or exit_reason):
+            next_prompt += ''.join(self._pending_briefs)
+            self._pending_briefs.clear()
         return next_prompt
 
 def get_global_memory():

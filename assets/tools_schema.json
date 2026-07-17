@@ -83,5 +83,15 @@
       "server": {"type": "string", "description": "MCP Server name (see [MCP Servers] section in system prompt)"},
       "tool": {"type": "string", "description": "Tool name to call on that server"},
       "arguments": {"type": "object", "description": "Arguments dict for the tool", "default": {}}}, "required": ["server", "tool"]}}
+  },
+  {"type": "function", "function": {
+    "name": "skill_manage",
+    "description": "Manage the agent's own skills for self-evolution (create/patch/retire/list_evolvable). patch and retire ONLY touch skills whose frontmatter has author=agent or evolvable:true; user-authored skills are read-only. patch auto-saves a .prev snapshot (revert by file_read of <skill_md_path>.prev, then patch again). Requires env GA_SKILL_EVOLUTION_ENABLED=1. Pass dry_run=true to validate the SKILL.md without writing. The distillation loop calls this with full replacement SKILL.md content (frontmatter with author/evolvable/evolved_from/version + body with ## headings).",
+    "parameters": {"type": "object", "properties": {
+      "action": {"type": "string", "enum": ["create", "patch", "retire", "list_evolvable"], "description": "create=new skill dir+SKILL.md; patch=replace an evolvable skill's SKILL.md; retire=set evolvable:false (keeps file); list_evolvable=list author=agent skills"},
+      "name": {"type": "string", "description": "Skill name (frontmatter name). Required for create/patch/retire; ignored for list_evolvable"},
+      "skill_md": {"type": "string", "description": "Full SKILL.md content (frontmatter+body) for create/patch. Must include provenance frontmatter (author: agent, evolvable, evolved_from, version). Omit for retire/list_evolvable"},
+      "reason": {"type": "string", "description": "Short justification recorded into evolved_from/version provenance. Recommended"},
+      "dry_run": {"type": "boolean", "description": "Validate skill_md only (structure+provenance), do not write to disk", "default": false}}, "required": ["action"]}}
   }
 ]

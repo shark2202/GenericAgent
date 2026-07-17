@@ -67,6 +67,7 @@ L4: ../memory/L4_raw_sessions/ (历史会话层 - scheduler反射自动收集，
 形式：
 - SOP（*_sop.md）：为单一任务或小类任务保留极简的「关键前置 + 典型坑」清单，避免长篇教程。
 - 工具脚本（*.py）：仅封装高复用、逻辑相对复杂且不希望每次都重新推理的处理流程。
+- skill_exp_<name>.md：技能体验文件。存在 → 该 Skill 进 L1 第一层高频映射（热）；缺席 → L1 第二层仅列关键词（冷）。由 `sync_skills_to_l1` 自动归类，非蒸馏产物。
 ---
 ## L1 ↔ L2/L3 同步规则
 | 操作 | L1 同步 |
@@ -79,6 +80,21 @@ L4: ../memory/L4_raw_sessions/ (历史会话层 - scheduler反射自动收集，
 > **同步红线**：L1 只写关键词/名称，禁搬细节。括号内只写反直觉的场景触发词(2-4字)，禁写机制/方法/步骤。需要评估L1中的token数和索引效用。
 > 反例：❌ sop_name(场景A:方法1+方法2+方法3) → ✅ sop_name(场景A)
 > 反例：名字已自解释时 ❌ discord_slate_sop(Slate输入框) → ✅ discord_slate_sop
+
+---
+## 技能自进化 (Skill Evolution)
+
+> Skill = 可复用能力模板（`../.agents/skills/<name>/SKILL.md`），独立于 L1-L4 记忆层级，带 provenance frontmatter（`author`/`evolvable`/`evolved_from`/`version`）。
+
+**写入通道（唯一）**：`skill_manage` 工具，action ∈ `create`/`patch`/`retire`/`list_evolvable`。
+- 严禁直接 `file_patch` 改 SKILL.md —— 会绕过 provenance 校验、结构 validate、`.prev` 轮转备份。
+- `author=user` 或 `evolvable=false` 的技能只读：可返回建议但拒绝落盘（自主边界）。
+- 写前自动 `.prev` 备份（轮转快照，可 `revert`）；首次原始另有 `.bak` 兜底。
+- 写后 `validate_skill` 结构校验失败 → 自动 revert `.prev`。
+
+**自动蒸馏（后台）**：复杂任务（≥6 轮）完成时，daemon 线程触发一次性 LLM 调用，从 history 快照结晶 0/1 个 Skill create/patch，经 `skill_manage` 落盘（origin=background_review）。熔断：单技能连续自动 patch ≥5 → 只产 Brief 不落盘。
+
+**人类闭环**：自动蒸馏结果以 Brief 形式进 turn%10 槽，待 approve/edit/revert；总闸 `GA_SKILL_EVOLUTION_ENABLED=1`。
 
 ---
 ## 信息分类快速决策树
