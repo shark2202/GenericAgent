@@ -1058,11 +1058,11 @@ dispatch (method-track priority + registry-track fallback)."
 - [x] **Step 5.5: 最终验证清单**
 
 逐项确认（对应 OpenSpec spec 的 5 requirements / 7 scenarios）：
-- [ ] **Dual-track dispatch with method priority**（spec req 1）：Task 2 `test_method_track_beats_registry_on_collision` + `test_registry_track_dispatches_without_handler_method` + `test_unknown_tool_when_neither_method_nor_registry` ✓
-- [ ] **Self-registration without handler modification**（spec req 2）：Task 4 `test_skill_manage_not_a_method_on_handler` + `test_skill_manage_registered_after_discover` ✓
-- [ ] **Drop-in auto-discovery with zero edit to ga.py main file**（spec req 2 scenario 2，Spec Patch 新增）：Task 1 `test_discover_tools_loads_dropin_modules` + Task 4 实际 `tools/skill_manage.py` drop-in ✓
-- [ ] **Backward compatibility of existing do_* methods**（spec req 3）：Task 2 `test_method_track_dispatches_do_echo` + `test_method_track_injects_index_and_tool_num` + Step 2.5 的 38 skill 测试绿 ✓
-- [ ] **Arg injection parity across tracks**（spec req 4）：Task 2 `test_registry_arg_injection_parity`（registry）与 `test_method_track_injects_index_and_tool_num`（method）对照 ✓
-- [ ] **Registry function signature (handler, args, response)**（spec req 5）：Task 2 `test_registry_fn_signature_uses_handler_param`（验证经 handler 参数访问 handler.cwd）+ Task 4 `tools/skill_manage.py` 的 `skill_manage(handler, args, response)` ✓
+- [x] **Dual-track dispatch with method priority**（spec req 1）：Task 2 `test_method_track_beats_registry_on_collision` + `test_registry_track_dispatches_without_handler_method` + `test_unknown_tool_when_neither_method_nor_registry` ✓
+- [x] **Self-registration without handler modification**（spec req 2）：Task 4 `test_skill_manage_not_a_method_on_handler` + `test_skill_manage_registered_after_discover` ✓
+- [x] **Drop-in auto-discovery with zero edit to ga.py main file**（spec req 2 scenario 2，Spec Patch 新增）：Task 1 `test_discover_tools_loads_dropin_modules` + Task 4 实际 `tools/skill_manage.py` drop-in ✓
+- [x] **Backward compatibility of existing do_* methods**（spec req 3）：Task 2 `test_method_track_dispatches_do_echo` + `test_method_track_injects_index_and_tool_num` + Step 2.5 的 38 skill 测试绿 ✓
+- [x] **Arg injection parity across tracks**（spec req 4）：Task 2 `test_registry_arg_injection_parity`（registry）与 `test_method_track_injects_index_and_tool_num`（method）对照 ✓
+- [x] **Registry function signature (handler, args, response)**（spec req 5）：Task 2 `test_registry_fn_signature_uses_handler_param`（验证经 handler 参数访问 handler.cwd）+ Task 4 `tools/skill_manage.py` 的 `skill_manage(handler, args, response)` ✓
 
 ---
