@@ -10,7 +10,8 @@
 |---|---|
 | `agentmain.py` | **统一引擎入口**。SDK 类 `GenericAgent`，所有 16 个前端均 `from agentmain import GenericAgent`。含 4 种运行模式 (CLI/--task/--func/--reflect) |
 | `agent_loop.py` | **纯引擎循环**，无 GA 业务。生成器 `agent_runner_loop()`：LLM 生成→工具 dispatch→StepOutcome 判定 |
-| `ga.py` | **工具实现**。`GenericAgentHandler(BaseHandler)`：所有 Agent 工具 (`ask_user`, `code_run`, `file_read`, `file_patch`, `web_scan`, `web_execute_js`, `start_long_term_update` 等) |
+| `ga.py` | **工具实现**。`GenericAgentHandler(BaseHandler)`：handler 方法（`do_*`）；module-level utils 已抽至 `ga_utils.py`（经 named import + `__all__` re-export，`from ga import smart_format` 等 back-compat 不破） |
+| `ga_utils.py` | **工具函数库**（从 ga.py 抽离）。filetools/exectools/webtools/misc 分组的纯/半纯函数 + `script_dir`/`driver`/`_read_dirs` 全局 |
 | `llmcore.py` | **LLM 通信层**。Session 体系：`ClaudeSession`/`LLMSession` (传统) + `NativeClaudeSession`/`NativeOAISession` (原生 tool) + `MixinSession` (故障转移) |
 | `simphtml.py` | **HTML 简化**，将被访问页面的 DOM 转为 token 高效的文本 |
 | `TMWebDriver.py` | **浏览器远程控制**。`TMWebDriver` 类提供 Chrome CDP 的 WebSocket 代理 |
@@ -29,6 +30,7 @@ GenericAgent/
 ├── agent_loop.py          ← 引擎：LLM↔工具循环 (纯框架，无业务)
 ├── agentmain.py           ← SDK：GenericAgent 类 + 4 种运行模式入口
 ├── ga.py                  ← 工具：do_*() 方法集合
+├── ga_utils.py            ← 工具函数库（filetools/exectools/webtools/misc，从 ga.py 抽离）
 ├── llmcore.py             ← LLM：多协议 Session 体系
 ├── simphtml.py            ← HTML：页面 DOM 精简
 ├── TMWebDriver.py         ← 浏览器：CDP 代理控制
@@ -293,5 +295,5 @@ GenericAgent/
 3. **历史在 Session**: 完整对话历史存在 `llmclient.backend`，不传 messages 数组
 4. **StepOutcome 控制流**: 工具不直接控制循环，只返回 outcome (next_prompt/should_exit/data)
 5. **自进化记忆**: 任务完成后 Agent 自发调用 `start_long_term_update` 将经验结晶为 L3 Skill
-6. **零依赖快速启动**: `agent_loop.py` + `agentmain.py` + `ga.py` + `llmcore.py` 构成最小可运行内核
+6. **零依赖快速启动**: `agent_loop.py` + `agentmain.py` + `ga.py` + `ga_utils.py` + `llmcore.py` 构成最小可运行内核
 7. **MCP 工具扩展**: 通过 `mcp_client.py` 连接外部 MCP Server，工具列表经 `get_skill_catalog()` 注入 system prompt（与 Skill 索引同级），`mcp_call` 统一调用，配置热更新 + 自动重连，单 Server 故障隔离
