@@ -528,7 +528,7 @@ path now has method/registry/collision/unknown-tool coverage."
 
 **设计要点（design §4.5）：** 纯移动，net ≈ 0。分组仅是组织注释，不拆多文件（守小变更半径）。`ga.py:1` 现有 import（`sys, os, re, json, time, threading, importlib, webbrowser` 等）需评估哪些仅被迁出函数用——若 `webbrowser`/`simphtml` 只在 utils 内用，迁入 `ga_utils.py` 顶部；`ga.py` 仍需的（如 `re`/`json` 给 handler 方法用）保留。
 
-- [ ] **Step 3.1: 写回归测试 `tests/test_ga_utils_import.py`（迁移前后行为不变的契约）**
+- [x] **Step 3.1: 写回归测试 `tests/test_ga_utils_import.py`（迁移前后行为不变的契约）**
 
 迁移是纯移动，测试聚焦"符号仍可 import + 行为不变"。
 
@@ -584,12 +584,12 @@ def test_safe_print_swallows_error():
     safe_print("ok")  # no exception
 ```
 
-- [ ] **Step 3.2: 运行测试确认失败**
+- [x] **Step 3.2: 运行测试确认失败**
 
 Run: `python -m pytest tests/test_ga_utils_import.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ga_utils'`
 
-- [ ] **Step 3.3: 新建 `ga_utils.py`，迁入 ~15 函数 + 3 全局**
+- [x] **Step 3.3: 新建 `ga_utils.py`，迁入 ~15 函数 + 3 全局**
 
 从 `ga.py` 原样搬运以下符号到新文件 `ga_utils.py`（**逐字复制函数体，不改逻辑，仅调整顶部 import**）：
 
@@ -631,7 +631,7 @@ _read_dirs = set()
 
 注：`first_init_driver` 内 `from TMWebDriver import TMWebDriver` 是函数内延迟 import，原样保留（design §4.5 延迟 import）。`web_scan` 内 `importlib.reload(simphtml)` 依赖模块顶部 `import simphtml`。
 
-- [ ] **Step 3.4: 从 `ga.py` 删除迁出的函数 + 全局，顶部加 import**
+- [x] **Step 3.4: 从 `ga.py` 删除迁出的函数 + 全局，顶部加 import**
 
 从 `ga.py` 删除 Step 3.3 列出的所有函数定义与全局（`script_dir`/`driver`/`_read_dirs`/15 函数）。
 
@@ -648,7 +648,7 @@ from ga_utils import (safe_print, code_run, ask_user, first_init_driver, web_sca
 
 `agentmain.py:14` 现有 `from ga import GenericAgentHandler, smart_format, get_global_memory, format_error, consume_file`——`smart_format`/`format_error`/`consume_file` 经 `ga.py` 的 named import re-export，**零改动**。
 
-- [ ] **Step 3.5: py_compile + ruff**
+- [x] **Step 3.5: py_compile + ruff**
 
 Run: `python -m py_compile ga.py ga_utils.py && echo OK`
 Expected: `OK`
@@ -656,12 +656,12 @@ Expected: `OK`
 Run: `ruff check ga.py ga_utils.py`
 Expected: 0 新违规（若 `ga.py` 某些 import 因迁出变 unused，按 ruff 提示删；这是 net-line-count 的贡献项之一）
 
-- [ ] **Step 3.6: 运行回归测试确认通过**
+- [x] **Step 3.6: 运行回归测试确认通过**
 
 Run: `python -m pytest tests/test_ga_utils_import.py tests/test_agent_loop_dispatch.py tests/test_tool_registry.py tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py -v`
 Expected: PASS（utils 抽离未破 dispatch/registry/skill 行为）
 
-- [ ] **Step 3.7: 更新 `MAP.md`（tasks 3.4）**
+- [x] **Step 3.7: 更新 `MAP.md`（tasks 3.4）**
 
 在 `MAP.md` 顶层入口表（原 :11-13 附近）：
 - 把 `ga.py` 行描述从"工具实现。`GenericAgentHandler(BaseHandler)`：所有 Agent 工具…"改为"工具实现。`GenericAgentHandler(BaseHandler)`：handler 方法（`do_*`）；module-level utils 已抽至 `ga_utils.py`"。
@@ -669,7 +669,7 @@ Expected: PASS（utils 抽离未破 dispatch/registry/skill 行为）
 
 在目录结构总览（原 :29-31 附近）补 `ga_utils.py` 与（预告）`tools/` 目录条目。
 
-- [ ] **Step 3.8: commit**
+- [x] **Step 3.8: commit**
 
 ```bash
 git add ga.py ga_utils.py MAP.md tests/test_ga_utils_import.py

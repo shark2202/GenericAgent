@@ -14,10 +14,10 @@
 
 ## 3. utils 抽离 → `ga_utils.py`（纯移动）
 
-- [ ] 3.1 新建 `ga_utils.py`，按分组移入 ~15 函数（filetools/exectools/webtools/misc）+ `script_dir`/`driver`/`_read_dirs` 全局
-- [ ] 3.2 `ga.py` 改 `from ga_utils import *`（或 named import），删原 module-level 函数定义
-- [ ] 3.3 `ruff check ga.py ga_utils.py` 0 新违规；`py_compile` 两文件；全单测仍绿
-- [ ] 3.4 更新 `MAP.md`（ga.py 条目 + 新增 ga_utils.py）
+- [x] 3.1 新建 `ga_utils.py`，按分组移入 ~15 函数（filetools/exectools/webtools/misc）+ `script_dir`/`driver`/`_read_dirs` 全局
+- [x] 3.2 `ga.py` 改 `from ga_utils import *`（或 named import），删原 module-level 函数定义
+- [x] 3.3 `ruff check ga.py ga_utils.py` 0 新违规；`py_compile` 两文件；全单测仍绿
+- [x] 3.4 更新 `MAP.md`（ga.py 条目 + 新增 ga_utils.py）
 
 ## 4. hermes `do_skill_manage` 迁移到 registry 自注册
 
