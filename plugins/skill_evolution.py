@@ -95,7 +95,9 @@ def _apply_op(handler, op):
     args = {'action': action, 'name': name, 'skill_md': skill_md, 'reason': reason, 'dry_run': False}
     token = skill_write_origin.set('background_review')
     try:
-        outcome = _drain(handler.do_skill_manage(args, None))
+        from agent_loop import get_tool
+        fn = get_tool("skill_manage")
+        outcome = _drain(fn(handler, args, None)) if fn else None
     finally:
         skill_write_origin.reset(token)
     status = getattr(outcome, 'data', None)

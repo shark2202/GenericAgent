@@ -11,6 +11,9 @@ from agent_loop import agent_runner_loop
 try:
     from plugins.hooks import discover_and_load; discover_and_load()
 except Exception: pass
+try:
+    from agent_loop import discover_tools; discover_tools(os.path.join(os.path.dirname(__file__), 'tools'))
+except Exception: pass
 from ga import GenericAgentHandler, smart_format, get_global_memory, format_error, consume_file
 try:
     from mcp_client import MCPClientManager

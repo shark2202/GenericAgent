@@ -26,10 +26,16 @@ import plugins.skill_evolution as se  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _reset_counts():
+def _reset_counts_and_registry():
+    import agent_loop
     se._auto_patch_counts.clear()
     se._consecutive_auto_distills = 0
+    saved = agent_loop._TOOL_REGISTRY.get("skill_manage")
     yield
+    if saved is None:
+        agent_loop._TOOL_REGISTRY.pop("skill_manage", None)
+    else:
+        agent_loop._TOOL_REGISTRY["skill_manage"] = saved
 
 
 # ── build_brief ───────────────────────────────────────────────────
@@ -95,48 +101,57 @@ class _FakeOutcome:
         self.data = data
 
 
+def _install_fake_skill_manage(status="ok"):
+    """Register a fake skill_manage tool bound to a fresh fake handler; return the handler.
+    Mirrors the post-ripple contract: _apply_op calls get_tool('skill_manage')(handler, args, None)."""
+    import agent_loop
+    h = _FakeHandler(status=status)
+
+    @agent_loop.register_tool("skill_manage")
+    def _fn(handler, args, response):
+        h.calls.append(dict(args))
+        yield "streamed"
+        return _FakeOutcome({"status": h._status, "action": args["action"], "name": args["name"]})
+    return h
+
+
 class _FakeHandler:
-    """Mimics do_skill_manage as a generator that returns a StepOutcome-like."""
+    """Receives skill_manage calls via the registry (post-ripple), not as a method."""
 
     def __init__(self, status="ok"):
         self.calls = []
         self._pending_briefs = []
         self._status = status
 
-    def do_skill_manage(self, args, response):
-        self.calls.append(dict(args))
-        yield "streamed"
-        return _FakeOutcome({"status": self._status, "action": args["action"], "name": args["name"]})
-
 
 def test_apply_op_patch_succeeds_and_counts():
-    h = _FakeHandler(status="ok")
+    h = _install_fake_skill_manage(status="ok")
     se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
     assert len(h.calls) == 1
     assert se._auto_patch_counts["s"] == 1
 
 
 def test_apply_op_create_does_not_count_circuit():
-    h = _FakeHandler(status="ok")
+    h = _install_fake_skill_manage(status="ok")
     se._apply_op(h, {"action": "create", "name": "s", "skill_md": "x", "reason": "r"})
     assert len(h.calls) == 1
     assert "s" not in se._auto_patch_counts  # create doesn't trip the patch breaker
 
 
 def test_apply_op_failed_patch_not_counted():
-    h = _FakeHandler(status="invalid")
+    h = _install_fake_skill_manage(status="invalid")
     se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
     assert se._auto_patch_counts.get("s", 0) == 0
 
 
 def test_apply_op_unknown_action_skipped():
-    h = _FakeHandler()
+    h = _install_fake_skill_manage()
     se._apply_op(h, {"action": "retire", "name": "s", "skill_md": "x", "reason": "r"})
     assert h.calls == []
 
 
 def test_apply_op_missing_fields_skipped():
-    h = _FakeHandler()
+    h = _install_fake_skill_manage()
     se._apply_op(h, {"action": "patch", "name": "", "skill_md": "x", "reason": ""})
     se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "", "reason": ""})
     assert h.calls == []
@@ -145,7 +160,7 @@ def test_apply_op_missing_fields_skipped():
 def test_circuit_breaker_skips_after_max():
     """After MAX_AUTO_PATCH_PER_SKILL successful patches, further patches are
     skipped (brief appended instead) and do_skill_manage is NOT called."""
-    h = _FakeHandler(status="ok")
+    h = _install_fake_skill_manage(status="ok")
     op = {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"}
     for _ in range(se.MAX_AUTO_PATCH_PER_SKILL):
         se._apply_op(h, op)
