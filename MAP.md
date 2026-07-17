@@ -1,6 +1,6 @@
 # GenericAgent 项目地图 (MAP)
 
-> 最后更新: 2026-07-08
+> 最后更新: 2026-07-17
 
 ---
 
@@ -8,10 +8,11 @@
 
 | 文件 | 作用 |
 |---|---|
-| `agentmain.py` | **统一引擎入口**。SDK 类 `GenericAgent`，所有 16 个前端均 `from agentmain import GenericAgent`。含 4 种运行模式 (CLI/--task/--func/--reflect) |
-| `agent_loop.py` | **纯引擎循环**，无 GA 业务。生成器 `agent_runner_loop()`：LLM 生成→工具 dispatch→StepOutcome 判定 |
+| `agentmain.py` | **统一引擎入口**。SDK 类 `GenericAgent`，所有 16 个前端均 `from agentmain import GenericAgent`。含 4 种运行模式 (CLI/--task/--func/--reflect)。启动时 `discover_tools(tools/)` 触发 drop-in 工具自注册 |
+| `agent_loop.py` | **纯引擎循环**，无 GA 业务。生成器 `agent_runner_loop()`：LLM 生成→工具 dispatch→StepOutcome 判定。含 additive tool registry（`register_tool`/`get_tool`/`discover_tools` + dispatch fallback：method-track 优先，registry-track 回退） |
 | `ga.py` | **工具实现**。`GenericAgentHandler(BaseHandler)`：handler 方法（`do_*`）；module-level utils 已抽至 `ga_utils.py`（经 named import + `__all__` re-export，`from ga import smart_format` 等 back-compat 不破） |
 | `ga_utils.py` | **工具函数库**（从 ga.py 抽离）。filetools/exectools/webtools/misc 分组的纯/半纯函数 + `script_dir`/`driver`/`_read_dirs` 全局 |
+| `tools/` | **drop-in 工具目录**（非 `_` 开头 .py 经 `discover_tools` 自注册到 `agent_loop._TOOL_REGISTRY`）。`tools/skill_manage.py` = hermes 自进化 CRUD（经 `@register_tool("skill_manage")` 装载，无需改 handler/ga.py） |
 | `llmcore.py` | **LLM 通信层**。Session 体系：`ClaudeSession`/`LLMSession` (传统) + `NativeClaudeSession`/`NativeOAISession` (原生 tool) + `MixinSession` (故障转移) |
 | `simphtml.py` | **HTML 简化**，将被访问页面的 DOM 转为 token 高效的文本 |
 | `TMWebDriver.py` | **浏览器远程控制**。`TMWebDriver` 类提供 Chrome CDP 的 WebSocket 代理 |
@@ -27,10 +28,11 @@
 
 ```
 GenericAgent/
-├── agent_loop.py          ← 引擎：LLM↔工具循环 (纯框架，无业务)
-├── agentmain.py           ← SDK：GenericAgent 类 + 4 种运行模式入口
+├── agent_loop.py          ← 引擎：LLM↔工具循环 (纯框架，无业务) + tool registry 派发机制
+├── agentmain.py           ← SDK：GenericAgent 类 + 4 种运行模式入口 (启动时 discover_tools)
 ├── ga.py                  ← 工具：do_*() 方法集合
 ├── ga_utils.py            ← 工具函数库（filetools/exectools/webtools/misc，从 ga.py 抽离）
+├── tools/                 ← drop-in 工具目录（非 _ 开头 .py 经 discover_tools 自注册）
 ├── llmcore.py             ← LLM：多协议 Session 体系
 ├── simphtml.py            ← HTML：页面 DOM 精简
 ├── TMWebDriver.py         ← 浏览器：CDP 代理控制
@@ -282,8 +284,8 @@ GenericAgent/
                               │          │ tool_calls    │
                               │          ▼               │
                               │  ┌───────────────────┐  │
-                              │  │ handler.dispatch() │  │  ← ga.py
-                              │  │ → StepOutcome      │  │
+                              │  │ handler.dispatch() │  │  ← ga.py (method-track: do_*)
+                              │  │ → StepOutcome      │  │  ← agent_loop registry-track fallback
                               │  └───────────────────┘  │
                               └─────────────────────────┘
 ```

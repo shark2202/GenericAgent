@@ -35,6 +35,18 @@ while turn < max_turns:
 - **BaseHandler** (line 16) 是抽象基类，`dispatch()` 调 `do_<tool_name>`。GenericAgentHandler(ga.py) 继承它实现具体工具。
 - **Hooks**：在 tool_before/after, turn_before/after, llm_before/after, agent_before/after 八个点调用 `_hook()`，无插件时为 no-op。
 
+### Tool registry — 双轨派发（drop-in 扩展机制）
+
+`agent_loop.py` 顶部还承载 **additive tool registry** 派发机制（仍属引擎层，非业务）：
+
+- `register_tool(name)` 装饰器 → 写入模块级 `_TOOL_REGISTRY[name] = fn`
+- `discover_tools(tools_dir)` → 扫描目录内非 `_` 开头 .py 并 import，触发各模块 `@register_tool` 自注册（per-module 失败写 stderr，不静默吞；目录缺失为 no-op）
+- `get_tool(name)` → 查表
+
+`BaseHandler.dispatch()` 现为**双轨派发**：先查 handler 的 `do_<name>` 方法（method-track，优先），未命中再查 `_TOOL_REGISTRY`（registry-track 回退），两轨均无则 yield "未知工具"。registry-track 与 method-track 同享 `_index`/`_tool_num` 注入与 `tool_before/after` hook。
+
+**分层不变性**：`agent_loop.py` 顶部不 import 任何业务模块（`ga.py`/`tools/*` 均不在此 import）。业务模块经 SDK 层 `agentmain.py` 启动时 `discover_tools(os.path.join(..., 'tools'))` 运行时装载，保纯引擎性。drop-in 一个新工具 = 仅往 `tools/` 放一个 `@register_tool` 装饰的 .py 文件，**零 edit 到 `ga.py` / handler 类体**。
+
 ### verbose vs non-verbose
 
 - verbose=True：yield 原始 markdown chunk（含 `````` 代码块标记）
@@ -98,12 +110,15 @@ agentmain.GenericAgent.run()
   │
   ├─ put_task() → display_queue   (线程安全队列)
   │
+  ├─ discover_tools('tools/')     ← 启动期：drop-in 模块自注册到 _TOOL_REGISTRY
+  │
   ├─ agent_runner_loop()  ← generator，yield 文本流
   │     │
   │     ├─ llmclient.chat()       (历史存在 backend 里)
   │     │
   │     └─ handler.dispatch()     (GenericAgentHandler from ga.py)
-  │           └─ do_<tool>() → StepOutcome
+  │           ├─ method-track: do_<tool>() → StepOutcome  (优先)
+  │           └─ registry-track: _TOOL_REGISTRY[name](handler, args, response)  (fallback)
   │
   └─ 消费 generator → 推 display_queue → frontend 读取
 ```

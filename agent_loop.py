@@ -14,7 +14,8 @@ def try_call_generator(func, *args, **kwargs):
     return ret
 
 # Additive tool registry: drop-in tool modules self-register via @register_tool;
-# discover_tools loads a tools dir at startup. dispatch fallback wiring lands in Task 2.
+# discover_tools loads a tools dir at startup. dispatch() consults the registry as a
+# fallback when no do_<name> method exists on the handler (dual-track dispatch).
 _TOOL_REGISTRY = {}  # name -> (handler, args, response) -> StepOutcome
 
 def register_tool(name):
