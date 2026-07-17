@@ -1,4 +1,4 @@
-import json, re, os
+import json, re, os, importlib, sys
 from dataclasses import dataclass
 from typing import Any, Optional
 try: from plugins.hooks import trigger as _hook
@@ -12,6 +12,36 @@ def try_call_generator(func, *args, **kwargs):
     ret = func(*args, **kwargs)
     if hasattr(ret, '__iter__') and not isinstance(ret, (str, bytes, dict, list)): ret = yield from ret
     return ret
+
+# Additive tool registry: drop-in tool modules self-register via @register_tool;
+# discover_tools loads a tools dir at startup. dispatch fallback wiring lands in Task 2.
+_TOOL_REGISTRY = {}  # name -> (handler, args, response) -> StepOutcome
+
+def register_tool(name):
+    """Decorator: bind a tool fn under `name` so dispatch (Task 2 fallback) can look it up."""
+    def deco(fn):
+        _TOOL_REGISTRY[name] = fn
+        return fn
+    return deco
+
+def get_tool(name):
+    """Look up a registered tool fn by name, or None if unregistered."""
+    return _TOOL_REGISTRY.get(name)
+
+def discover_tools(tools_dir):
+    """Scan tools_dir for non-underscore .py modules and import them (triggering self-registration).
+    Package name is the dir basename; per-module failures write to stderr (let-it-crash guard,
+    not silent except:pass); a missing dir is a silent no-op."""
+    if not os.path.isdir(tools_dir):
+        return
+    pkg = os.path.basename(os.path.normpath(tools_dir))
+    for e in os.scandir(tools_dir):
+        if e.is_file() and e.name.endswith('.py') and not e.name.startswith('_'):
+            mod = e.name[:-3]
+            try:
+                importlib.import_module(f"{pkg}.{mod}")
+            except Exception as ex:
+                sys.stderr.write(f"[tool_registry] failed to load {mod}: {ex}\n")
 
 class BaseHandler:
     def turn_end_callback(self, response, tool_calls, tool_results, turn, next_prompt, exit_reason): return next_prompt
