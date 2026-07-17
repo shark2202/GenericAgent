@@ -31,3 +31,15 @@
 - [x] 5.1 net line count 核算：ga.py 净减（utils 迁出 + `do_skill_manage` 迁出 − 新 import 行）≤0 或接近
 - [x] 5.2 `ruff check .` 不引入新违规；`pytest tests/` 不破现有用例
 - [x] 5.3 更新 `MAP.md` / `docs/architecture.md`（如分层有变：registry 模块定位）
+
+## Final review deferred Minor (accepted — review_mode=standard, non-blocking)
+- T2-M1 stale comment: FIXED by Task 5
+- T2-M2 registry-track tool_before locals extra `fn` key: ACCEPT (spec doesn't constrain hook locals, no hook breakage)
+- T2-M3 test_registry_arg_injection_parity dead fixture param: defer to verify (1-line cleanup)
+- T4-M1 agentmain.py:14-16 discover_tools block 3 ruff (I001/E702/E701): ACCEPT (mirrors pre-existing discover_and_load block line-for-line, design §4.6 endorsed)
+- T4-M2 plugins/skill_evolution.py docstrings still say do_skill_manage: defer to verify (stale terminology)
+- T4-M3 ga.py:16 `import *`: ACCEPT (__all__ is load-bearing for ga_utils re-export)
+- T4-M4 test reload fixture isolation smell: ACCEPT (test-only, no runtime impact)
+- OpenSpec 2.1 agent_runner_loop-level breadth (MAX_TURNS/_done_hooks/tool_results): defer as broader F26 follow-up (dispatch-path = spec's concern, fully covered)
+- net +106 vs ≤0: ACCEPT — New Capability (not pure refactor), mechanism cost +44 (abstraction floor), ga.py -425 meets main-file goal, design §8 budgeted
+<!-- review: final whole-branch Approved, 0 Critical/Important, standard mode no fix round -->
