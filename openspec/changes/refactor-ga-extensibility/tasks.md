@@ -1,8 +1,8 @@
 ## 1. Registry core (additive, no behavior change)
 
-- [ ] 1.1 新建 `tool_registry` 模块：定义 `register_tool(name)` 装饰器 + module-level `_TOOL_REGISTRY` dict
+- [x] 1.1 新建 `tool_registry` 模块：定义 `register_tool(name)` 装饰器 + module-level `_TOOL_REGISTRY` dict
 - [ ] 1.2 在 `BaseHandler.dispatch`（`agent_loop.py:18-29`）加 registry fallback 分支：method 未命中时查 `_TOOL_REGISTRY`，命中则调 `fn(handler, args, response)`；`_index`/`_tool_num` 注入对 registry 路径同样生效
-- [ ] 1.3 确认现有 `do_*` 走 method-track 零行为变更（手动回归：code_run/file_read/skill_manage 派发路径与 StepOutcome 形态不变）
+- [x] 1.3 确认现有 `do_*` 走 method-track 零行为变更（手动回归：code_run/file_read/skill_manage 派发路径与 StepOutcome 形态不变）
 
 ## 2. Dispatch 路径测试（审计 F26）
 
