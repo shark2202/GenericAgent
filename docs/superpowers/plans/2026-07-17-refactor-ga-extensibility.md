@@ -276,7 +276,7 @@ audit F26 sibling gap for the registry primitives."
 - Consumes: Task 1 的 `get_tool`/`_TOOL_REGISTRY`
 - Produces: `dispatch` 双轨契约（method-track 优先 → registry-track fallback → 未知工具）。注册函数签名 `fn(handler, args, response) -> StepOutcome`，`handler` 即 dispatch 的 `self`。
 
-- [ ] **Step 2.1: 写失败测试 `tests/test_agent_loop_dispatch.py`**
+- [x] **Step 2.1: 写失败测试 `tests/test_agent_loop_dispatch.py`**
 
 设计选择：**直接驱动 `handler.dispatch(...)` 而非整个 `agent_runner_loop`**。原因：`agent_runner_loop` 的 `client.chat` 返回生成器、`tc.function.name`/`tc.function.arguments` 结构、`_done_hooks` 等 handler 状态都需精细 mock，易脆。dispatch 是双轨契约的测点；直接调它精确覆盖 spec 的 5 requirements，且不耦合 LLM session 实现。
 
@@ -435,12 +435,12 @@ def test_unknown_tool_when_neither_method_nor_registry():
     assert outcome.should_exit is False
 ```
 
-- [ ] **Step 2.2: 运行测试确认失败**
+- [x] **Step 2.2: 运行测试确认失败**
 
 Run: `python -m pytest tests/test_agent_loop_dispatch.py -v`
 Expected: FAIL — registry-track 测试失败（dispatch 仍走原路径，无 fallback，`echo2` 命中"未知工具"分支返回 None data 而非 `{"echoed2":"yo"}`）
 
-- [ ] **Step 2.3: 在 `agent_loop.py:18-29` 实现 dispatch registry fallback**
+- [x] **Step 2.3: 在 `agent_loop.py:18-29` 实现 dispatch registry fallback**
 
 把现有 `dispatch`（`agent_loop.py:18-29`）：
 ```python
@@ -485,18 +485,18 @@ def dispatch(self, tool_name, args, response, index=0, tool_num=1):
 - `fn(self, args, response)`：`self` 即 handler，注册函数签名 `fn(handler, args, response)`（D2）。
 - 未知工具路径不变。
 
-- [ ] **Step 2.4: 运行测试确认通过**
+- [x] **Step 2.4: 运行测试确认通过**
 
 Run: `python -m pytest tests/test_agent_loop_dispatch.py -v`
 Expected: PASS（8 tests：method-track echo/method-arg-inject、registry-track fallback、collision method-wins、arg-parity、signature-handler-param、unknown-tool）
 
-- [ ] **Step 2.5: 回归现有 do_* 零行为变更（tasks 1.3）**
+- [x] **Step 2.5: 回归现有 do_* 零行为变更（tasks 1.3）**
 
 method-track 分支逐字未动，仅新增 else 分支内的 registry 子分支。跑既有 skill 测试确认未破：
 Run: `python -m pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py -v`
 Expected: PASS（38 tests，`do_skill_manage` 仍走 method-track，未删）
 
-- [ ] **Step 2.6: ruff + commit**
+- [x] **Step 2.6: ruff + commit**
 
 Run: `ruff check agent_loop.py tests/test_agent_loop_dispatch.py`
 Expected: 0 违规

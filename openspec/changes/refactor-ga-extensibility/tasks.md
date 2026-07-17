@@ -1,16 +1,16 @@
 ## 1. Registry core (additive, no behavior change)
 
 - [x] 1.1 新建 `tool_registry` 模块：定义 `register_tool(name)` 装饰器 + module-level `_TOOL_REGISTRY` dict
-- [ ] 1.2 在 `BaseHandler.dispatch`（`agent_loop.py:18-29`）加 registry fallback 分支：method 未命中时查 `_TOOL_REGISTRY`，命中则调 `fn(handler, args, response)`；`_index`/`_tool_num` 注入对 registry 路径同样生效
+- [x] 1.2 在 `BaseHandler.dispatch`（`agent_loop.py:18-29`）加 registry fallback 分支：method 未命中时查 `_TOOL_REGISTRY`，命中则调 `fn(handler, args, response)`；`_index`/`_tool_num` 注入对 registry 路径同样生效
 - [x] 1.3 确认现有 `do_*` 走 method-track 零行为变更（手动回归：code_run/file_read/skill_manage 派发路径与 StepOutcome 形态不变）
 
 ## 2. Dispatch 路径测试（审计 F26）
 
-- [ ] 2.1 新增 `tests/test_agent_loop_dispatch.py`：mock client + canned responses + test handler（`do_echo` 方法）覆盖单 tool→done / MAX_TURNS / `should_exit` / `no_tool` / `_done_hooks` / `tool_results` 组装
-- [ ] 2.2 测试 registry 派发：独立模块 `register_tool("echo")(fn)`，不改 handler 类体，断言 LLM `echo` tool_call 派发成功并返回 `StepOutcome`
-- [ ] 2.3 测试 method 优先：同名时 `do_<name>` method 胜出，registry 不被调
-- [ ] 2.4 测试 `_index`/`_tool_num` 注入 parity：registry 函数收到的 args 含 `_index`/`_tool_num`，与 method 路径一致
-- [ ] 2.5 测试未知工具：无 method 无 registry → "未知工具" `StepOutcome`
+- [x] 2.1 新增 `tests/test_agent_loop_dispatch.py`：mock client + canned responses + test handler（`do_echo` 方法）覆盖单 tool→done / MAX_TURNS / `should_exit` / `no_tool` / `_done_hooks` / `tool_results` 组装
+- [x] 2.2 测试 registry 派发：独立模块 `register_tool("echo")(fn)`，不改 handler 类体，断言 LLM `echo` tool_call 派发成功并返回 `StepOutcome`
+- [x] 2.3 测试 method 优先：同名时 `do_<name>` method 胜出，registry 不被调
+- [x] 2.4 测试 `_index`/`_tool_num` 注入 parity：registry 函数收到的 args 含 `_index`/`_tool_num`，与 method 路径一致
+- [x] 2.5 测试未知工具：无 method 无 registry → "未知工具" `StepOutcome`
 
 ## 3. utils 抽离 → `ga_utils.py`（纯移动）
 
