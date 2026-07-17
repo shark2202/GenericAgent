@@ -28,6 +28,6 @@
 
 ## 5. 收尾
 
-- [ ] 5.1 net line count 核算：ga.py 净减（utils 迁出 + `do_skill_manage` 迁出 − 新 import 行）≤0 或接近
-- [ ] 5.2 `ruff check .` 不引入新违规；`pytest tests/` 不破现有用例
-- [ ] 5.3 更新 `MAP.md` / `docs/architecture.md`（如分层有变：registry 模块定位）
+- [x] 5.1 net line count 核算：ga.py 净减（utils 迁出 + `do_skill_manage` 迁出 − 新 import 行）≤0 或接近
+- [x] 5.2 `ruff check .` 不引入新违规；`pytest tests/` 不破现有用例
+- [x] 5.3 更新 `MAP.md` / `docs/architecture.md`（如分层有变：registry 模块定位）

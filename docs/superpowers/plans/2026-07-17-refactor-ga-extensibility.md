@@ -1009,7 +1009,7 @@ handler and the tool self-registers on discover_tools."
 - Consumes: Task 1-4 全部产物
 - Produces: 净行数报告 + 全量测试绿 + 文档更新
 
-- [ ] **Step 5.1: net line count 核算（tasks 5.1）**
+- [x] **Step 5.1: net line count 核算（tasks 5.1）**
 
 对比 base-ref `dcda2b998c2bf3b1d541ceb5519d15d8e6dfd3ae` 与当前工作树的净行数：
 Run: `git diff dcda2b998c2bf3b1d541ceb5519d15d8e6dfd3ae --stat -- agent_loop.py ga.py ga_utils.py agentmain.py plugins/skill_evolution.py tools/`
@@ -1022,7 +1022,7 @@ Expected: 各文件增减列；整体 `+/-` 净行 ≤ 0 或接近（design §8�
 
 > 若核算结果 > 0 且超出"接近"容忍度，优先压缩 `agent_loop.py` 新增（如 `register_tool` 内联单行 docstring）。但 design §8 目标是 ≤0 或接近——本 change 的核心收益是"开扩展面不增主文件"，26 行引擎机制投入可接受（design §8 已列明）。若 reviewer 认为 net > 0 不可接受，回退到 design §8 的风险项讨论。
 
-- [ ] **Step 5.2: ruff + pytest 全量（tasks 5.2）**
+- [x] **Step 5.2: ruff + pytest 全量（tasks 5.2）**
 
 Run: `ruff check .`
 Expected: 0 新违规（与 base-ref 相比不增；既有 baseline 168 不在本 change scope，design §2 Non-Goals）
@@ -1035,7 +1035,7 @@ Expected: 不引入新失败。已知 baseline flakiness（若有 browser-depend
 - `tests/test_skill_manage_registry.py`（4）PASS
 - `tests/test_skill_evolution.py`（17）+ `tests/test_skill_evolution_plugin.py`（21）PASS（38）
 
-- [ ] **Step 5.3: 更新 `MAP.md` + `docs/architecture.md`（tasks 5.3）**
+- [x] **Step 5.3: 更新 `MAP.md` + `docs/architecture.md`（tasks 5.3）**
 
 **MAP.md**（若 Task 3 未完全覆盖）：
 - 顶层入口表补 `tools/` 行：`| \`tools/\` | **drop-in 工具目录**（非 _ 开头 .py 经 \`discover_tools\` 自注册）。\`tools/skill_manage.py\` = hermes 自进化 CRUD |`
@@ -1045,7 +1045,7 @@ Expected: 不引入新失败。已知 baseline flakiness（若有 browser-depend
 - 引擎层段落补：`agent_loop.py` 现含 tool registry 机制（`register_tool`/`_TOOL_REGISTRY`/`discover_tools`/`get_tool` + dispatch fallback）。registry 是派发机制属引擎层；`tools/` 下业务模块经 SDK 层 `agentmain` 的 `discover_tools` 运行时装载，`agent_loop` 顶部不 import 业务，保纯引擎性（design §3.1 分层）。
 - dispatch 数据流图（若 architecture.md 有）：补 method-track / registry-track 双轨分支。
 
-- [ ] **Step 5.4: commit 收尾**
+- [x] **Step 5.4: commit 收尾**
 
 ```bash
 git add MAP.md docs/architecture.md
@@ -1055,7 +1055,7 @@ Record agent_loop's registry role, tools/ drop-in dir, and the dual-track
 dispatch (method-track priority + registry-track fallback)."
 ```
 
-- [ ] **Step 5.5: 最终验证清单**
+- [x] **Step 5.5: 最终验证清单**
 
 逐项确认（对应 OpenSpec spec 的 5 requirements / 7 scenarios）：
 - [ ] **Dual-track dispatch with method priority**（spec req 1）：Task 2 `test_method_track_beats_registry_on_collision` + `test_registry_track_dispatches_without_handler_method` + `test_unknown_tool_when_neither_method_nor_registry` ✓
