@@ -21,10 +21,10 @@
 
 ## 4. hermes `do_skill_manage` 迁移到 registry 自注册
 
-- [ ] 4.1 新建独立模块，把 `do_skill_manage` + `_validate_skill_content`/`_set_frontmatter_flag`/`_build_skill_brief` 迁入；`self.*` 改 `handler.*`（`cwd`/`_pending_briefs`/`_get_anchor_prompt`）；skill_loader 6 函数改本模块 import
-- [ ] 4.2 经 `register_tool("skill_manage")` 自注册；从 `GenericAgentHandler` 类体删除 `do_skill_manage` + 3 helpers
-- [ ] 4.3 跑 `tests/test_skill_evolution.py` + `tests/test_skill_evolution_plugin.py`（38 tests）确认绿——provenance gate/`.prev`/熔断行为不变
-- [ ] 4.4 验证 `do_skill_manage` 经 registry 派发（method 已删，走 fallback）：T1 trigger / T3 patch / T8 Brief 路径（若 deps-complete env 可用）
+- [x] 4.1 新建独立模块，把 `do_skill_manage` + `_validate_skill_content`/`_set_frontmatter_flag`/`_build_skill_brief` 迁入；`self.*` 改 `handler.*`（`cwd`/`_pending_briefs`/`_get_anchor_prompt`）；skill_loader 6 函数改本模块 import
+- [x] 4.2 经 `register_tool("skill_manage")` 自注册；从 `GenericAgentHandler` 类体删除 `do_skill_manage` + 3 helpers
+- [x] 4.3 跑 `tests/test_skill_evolution.py` + `tests/test_skill_evolution_plugin.py`（38 tests）确认绿——provenance gate/`.prev`/熔断行为不变
+- [x] 4.4 验证 `do_skill_manage` 经 registry 派发（method 已删，走 fallback）：T1 trigger / T3 patch / T8 Brief 路径（若 deps-complete env 可用）
 
 ## 5. 收尾
 

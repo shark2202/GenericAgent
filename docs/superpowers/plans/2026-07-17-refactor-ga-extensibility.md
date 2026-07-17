@@ -711,7 +711,7 @@ are unchanged. Net-line contribution toward the ≤0 budget for the change."
 | `self._set_frontmatter_flag(content, key, value)` | `_set_frontmatter_flag(content, key, value)`（模块级，纯函数） |
 | `self._build_skill_brief('create', name, reason, path)` | `_build_skill_brief('create', name, reason, path, handler.cwd)`（收 cwd 参数） |
 
-- [ ] **Step 4.1: 写失败测试 `tests/test_skill_evolution_plugin.py` 改 mock + `tests/test_skill_manage_registry.py`**
+- [x] **Step 4.1: 写失败测试 `tests/test_skill_evolution_plugin.py` 改 mock + `tests/test_skill_manage_registry.py`**
 
 **4.1a: 改 `tests/test_skill_evolution_plugin.py` 的 `_FakeHandler`**
 
@@ -820,7 +820,7 @@ def test_build_skill_brief_takes_cwd_param():
     assert "patch" in brief and "s" in brief and "file_read" in brief
 ```
 
-- [ ] **Step 4.2: 运行测试确认失败**
+- [x] **Step 4.2: 运行测试确认失败**
 
 Run: `python -m pytest tests/test_skill_manage_registry.py tests/test_skill_evolution_plugin.py -v`
 Expected:
@@ -828,7 +828,7 @@ Expected:
 - `test_skill_manage_registered_after_discover` FAIL（`tools/skill_manage.py` 不存在）
 - plugin 测试 FAIL（`_apply_op` 仍调 `handler.do_skill_manage`，fake 已不定义该方法 → AttributeError；或 ripple 未改时 fake 仍走旧路但 fixture 已改）
 
-- [ ] **Step 4.3: 新建 `tools/__init__.py`（空）+ `tools/skill_manage.py`**
+- [x] **Step 4.3: 新建 `tools/__init__.py`（空）+ `tools/skill_manage.py`**
 
 `tools/__init__.py`：空文件（使 `tools` 成为 package，importlib `tools.skill_manage` 装载所需）。
 
@@ -912,7 +912,7 @@ def _build_skill_brief(action, name, reason, path, cwd):
 
 > 实现者注意：`do_skill_manage` 函数体较长（:483-617），**必须逐行搬运不重构**（守 38 测试绿 + 小变更半径）。替换仅限映射表所列 6 类 `self.*`。`backup_skill_prev`/`revert_skill_prev`/`_reset_skill_cache`/`sync_skills_to_l1`/`parse_provenance`/`validate_skill`/`_get_skills_catalog` 均已在顶部 import，调用方式不变。
 
-- [ ] **Step 4.4: 从 `ga.py` 的 `GenericAgentHandler` 删除 `do_skill_manage` + 3 helpers**
+- [x] **Step 4.4: 从 `ga.py` 的 `GenericAgentHandler` 删除 `do_skill_manage` + 3 helpers**
 
 删除 `ga.py:471-655`（`do_skill_manage` :471-617 + `_validate_skill_content` :619-631 + `_set_frontmatter_flag` :633-646 + `_build_skill_brief` :648-655）。保留其前后方法（`do_skill_detail` 之前、`do_mcp_call` :657 之后）不受影响。
 
@@ -921,7 +921,7 @@ def _build_skill_brief(action, name, reason, path, cwd):
 Run: `python -m py_compile ga.py tools/skill_manage.py && echo OK`
 Expected: `OK`
 
-- [ ] **Step 4.5: 在 `agentmain.py:12` 旁加 `discover_tools()` 调用（design §4.6）**
+- [x] **Step 4.5: 在 `agentmain.py:12` 旁加 `discover_tools()` 调用（design §4.6）**
 
 在 `agentmain.py:11-13` 现有：
 ```python
@@ -938,7 +938,7 @@ except Exception: pass
 
 > 外层 try/except 镜像现有 `discover_and_load` 风格（design §4.6）；`discover_tools` 内部 per-module 失败已写 stderr，非静默。`os.path.dirname(__file__)` 即 `script_dir`（`tools/` 与 `agentmain.py` 同目录）。
 
-- [ ] **Step 4.6: ripple — 改 `plugins/skill_evolution.py:98`（design §4.4）**
+- [x] **Step 4.6: ripple — 改 `plugins/skill_evolution.py:98`（design §4.4）**
 
 把 `plugins/skill_evolution.py:97-100`：
 ```python
@@ -963,7 +963,7 @@ except Exception: pass
 - `from agent_loop import get_tool` 放函数内（避免模块顶部 import 顺序问题；`agent_loop` 无 GA 依赖，安全）。
 - `fn is None` 防御：若 `tools/skill_manage.py` 装载失败（stderr 已记），`outcome = None`，后续 `getattr(outcome, 'data', None)`（:101）返回 None，走"落盘失败"分支（`_consecutive_auto_distills = 0`），let-it-crash 一致。
 
-- [ ] **Step 4.7: 运行 hermes 38 测试 + registry 闭环测试（tasks 4.3）**
+- [x] **Step 4.7: 运行 hermes 38 测试 + registry 闭环测试（tasks 4.3）**
 
 Run: `python -m pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_manage_registry.py tests/test_tool_registry.py tests/test_agent_loop_dispatch.py -v`
 Expected: PASS
@@ -971,7 +971,7 @@ Expected: PASS
 - `test_skill_manage_registry.py`（4）：注册/非方法/helper 模块级/cwd 参数。
 - dispatch/registry 测试仍绿。
 
-- [ ] **Step 4.8: 验证 do_skill_manage 经 registry 派发（tasks 4.4，若 deps-complete env 可用）**
+- [x] **Step 4.8: 验证 do_skill_manage 经 registry 派发（tasks 4.4，若 deps-complete env 可用）**
 
 若环境可启动完整 agent（有 mykey.py + 浏览器等）：
 Run: `python -c "import agentmain; agentmain.discover_tools(__import__('os').path.join(__import__('os').path.dirname(agentmain.__file__), 'tools')); from agent_loop import get_tool; print('registered:', get_tool('skill_manage') is not None)"`
@@ -979,7 +979,7 @@ Expected: `registered: True`
 
 若不可用，Step 4.7 的 `test_skill_manage_registered_after_discover` 已覆盖派发注册闭环；T1 trigger / T3 patch / T8 Brief 端到端路径留 verify 阶段在 deps-complete env 跑（design §6）。
 
-- [ ] **Step 4.9: ruff + commit**
+- [x] **Step 4.9: ruff + commit**
 
 Run: `ruff check tools/skill_manage.py ga.py agentmain.py plugins/skill_evolution.py tests/test_skill_manage_registry.py tests/test_skill_evolution_plugin.py`
 Expected: 0 新违规
