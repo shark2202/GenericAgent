@@ -55,6 +55,14 @@ class BaseHandler:
             return ret
         elif tool_name == 'bad_json': return StepOutcome(None, next_prompt=args.get('msg', 'bad_json'), should_exit=False)
         else:
+            fn = get_tool(tool_name)
+            if fn is not None:
+                args['_index'] = index
+                args['_tool_num'] = tool_num
+                _hook('tool_before', locals())
+                ret = yield from try_call_generator(fn, self, args, response)
+                _hook('tool_after', locals())
+                return ret
             yield f"未知工具: {tool_name}\n"
             return StepOutcome(None, next_prompt=f"未知工具 {tool_name}", should_exit=False)
 
