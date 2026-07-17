@@ -1,3 +1,7 @@
+---
+archived-with: 2026-07-17-refactor-ga-extensibility
+status: final
+---
 # refactor-ga-extensibility 实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

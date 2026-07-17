@@ -2,6 +2,8 @@
 comet_change: refactor-ga-extensibility
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-17-refactor-ga-extensibility
+status: final
 ---
 
 # Design Doc — refactor-ga-extensibility（tool 自注册 registry）
@@ -219,3 +221,4 @@ except Exception: pass
 ## 10. Mapping to OpenSpec Spec
 
 delta spec `specs/tool-dispatch/spec.md` 的 5 Requirement / 6 Scenario 覆盖本设计的派发契约。**Spec Patch**：给 "Self-registration without handler modification" requirement **加 1 scenario** 明确 drop-in auto-discovery（丢 `tools/` 文件即加载，零编辑 ga.py 主文件），使 spec 与 proposal success criteria #1 对齐、锁加载机制 A。属补充验收场景，不大改 spec 结构。
+
