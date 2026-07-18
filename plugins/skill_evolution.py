@@ -17,6 +17,7 @@ hermes-agent。do_skill_manage 对 user/非 evolvable 技能一律拒写（D8 �
 熔断（D8）：单技能连续自动 patch >= MAX_AUTO_PATCH_PER_SKILL → 只产 Brief。
 """
 import contextvars
+import datetime
 import json
 import os
 import re
@@ -24,18 +25,30 @@ import sys
 import threading
 
 import plugins.hooks as hooks
-from skill_loader import _get_skills_catalog
+from skill_loader import _get_skills_catalog, script_dir as _skill_loader_script_dir
 
 SKILL_DISTILL_MIN_TURNS = 6
 MAX_AUTO_PATCH_PER_SKILL = 5        # 熔断：单技能连续自动 patch 上限（D8）
-MAX_CHANGES_PER_DISTILL = 3        # 熔断：单次蒸馏改技能上限（D8；v1 一次只产 1 op）
 
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
 
-# 熔断计数：name -> 连续自动 patch 次数；前台修正（do_skill_manage 由 LLM 直调）时重置
+# 熔断计数：name -> 连续自动 patch 次数；前台修正（do_skill_manage 由 LLM 直调）或 revert 时重置
 _auto_patch_counts = {}
-_consecutive_auto_distills = 0
+
+
+def reset_auto_patch_count(name=None):
+    """Reset the auto-patch counter for a skill (or all skills if name is None).
+
+    Call this when a human-in-the-loop foreground edit or a revert happens,
+    so the skill is no longer permanently breaker-locked by the background
+    evolution loop.
+    """
+    global _auto_patch_counts
+    if name is None:
+        _auto_patch_counts = {}
+    else:
+        _auto_patch_counts.pop(name, None)
 
 
 def _evolution_enabled():
@@ -73,9 +86,27 @@ def _parse_op(content):
         return None
 
 
-def _apply_op(handler, op):
+def _append_fitness_log(name, action, source_turns, signal):
+    """Append one structured entry to memory/skill_exp_<name>.md (§机制 7).
+
+    Format (one line per event, append-only):
+      - <ISO8601> | action=<action> | turns=<source_turns> | signal=<signal>
+    """
+    try:
+        exp_dir = os.path.join(_skill_loader_script_dir, 'memory')
+        os.makedirs(exp_dir, exist_ok=True)
+        exp_path = os.path.join(exp_dir, f'skill_exp_{name}.md')
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        signal_str = json.dumps(signal, ensure_ascii=False) if signal is not None else 'null'
+        line = f"- {ts} | action={action} | turns={source_turns} | signal={signal_str}\n"
+        with open(exp_path, 'a', encoding='utf-8') as f:
+            f.write(line)
+    except Exception as e:
+        sys.stderr.write(f"[skill_evolution] fitness log failed: {e}\n")
+
+
+def _apply_op(handler, op, signal=None):
     """把蒸馏产出的单个 op 经 do_skill_manage 落盘（后台 origin + 熔断）。"""
-    global _consecutive_auto_distills
     action = op.get('action')
     if action not in ('create', 'patch'):
         return
@@ -104,10 +135,8 @@ def _apply_op(handler, op):
     if isinstance(status, dict) and status.get('status') == 'ok':
         if action == 'patch':
             _auto_patch_counts[name] = _auto_patch_counts.get(name, 0) + 1
-        _consecutive_auto_distills += 1
-    else:
-        # 落盘失败/校验失败：不计入连续自动 patch
-        _consecutive_auto_distills = 0
+        source_turns = getattr(handler, 'current_turn', 0)
+        _append_fitness_log(name, action, source_turns, signal)
 
 
 def distill(client, handler, signal=None):
@@ -149,7 +178,7 @@ def distill(client, handler, signal=None):
     if not op or op.get('action') == 'none':
         return
     try:
-        _apply_op(handler, op)
+        _apply_op(handler, op, signal=signal)
     except Exception as e:
         sys.stderr.write(f"[skill_evolution] apply_op failed: {e}\n")
 

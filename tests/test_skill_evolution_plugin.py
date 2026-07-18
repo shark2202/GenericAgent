@@ -29,7 +29,6 @@ import plugins.skill_evolution as se  # noqa: E402
 def _reset_counts_and_registry():
     import agent_loop
     se._auto_patch_counts.clear()
-    se._consecutive_auto_distills = 0
     saved = agent_loop._TOOL_REGISTRY.get("skill_manage")
     yield
     if saved is None:
@@ -240,3 +239,34 @@ def test_agent_after_valid_exited(monkeypatch, _capture_threads):
     monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
     se._on_agent_after({"exit_reason": {"result": "EXITED"}, "handler": _H(), "client": object()})
     assert len(_capture_threads) == 1
+
+
+# ── reset_auto_patch_count ───────────────────────────────────────
+
+def test_reset_auto_patch_count_single_skill():
+    se._auto_patch_counts["s"] = 5
+    se.reset_auto_patch_count("s")
+    assert "s" not in se._auto_patch_counts
+
+
+def test_reset_auto_patch_count_all():
+    se._auto_patch_counts = {"a": 1, "b": 2}
+    se.reset_auto_patch_count()
+    assert se._auto_patch_counts == {}
+
+
+# ── fitness log ──────────────────────────────────────────────────
+
+def test_append_fitness_log_format(tmp_path):
+    real_script_dir = se._skill_loader_script_dir
+    try:
+        se._skill_loader_script_dir = str(tmp_path)
+        se._append_fitness_log("my-skill", "patch", 12, {"type": "correction"})
+        exp_path = tmp_path / "memory" / "skill_exp_my-skill.md"
+        content = exp_path.read_text(encoding="utf-8")
+        assert "action=patch" in content
+        assert "turns=12" in content
+        assert '"type": "correction"' in content
+        assert content.startswith("- 2")  # ISO8601 timestamp starts with year
+    finally:
+        se._skill_loader_script_dir = real_script_dir

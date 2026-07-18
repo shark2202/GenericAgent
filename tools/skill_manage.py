@@ -8,15 +8,26 @@ import re
 import tempfile
 
 from agent_loop import StepOutcome, register_tool
+from plugins.skill_evolution import reset_auto_patch_count, skill_write_origin
 from skill_loader import (
     _get_skills_catalog,
     _reset_skill_cache,
     backup_skill_prev,
+    get_skill_detail,
     parse_provenance,
     revert_skill_prev,
     sync_skills_to_l1,
     validate_skill,
 )
+
+
+def _maybe_reset_on_foreground(name):
+    """Reset auto-patch counter when a human-in-the-loop foreground edit succeeds."""
+    try:
+        if skill_write_origin.get() != 'background_review':
+            reset_auto_patch_count(name)
+    except Exception:
+        pass
 
 
 @register_tool("skill_manage")
@@ -96,6 +107,7 @@ def skill_manage(handler, args, response):
             sync_skills_to_l1()
         except Exception:
             pass
+        _maybe_reset_on_foreground(name)
         yield f"[Skill Manage] created {name} at {path}\n"
         handler._pending_briefs.append(_build_skill_brief('create', name, reason, path, handler.cwd))
         return StepOutcome({'status': 'ok', 'action': 'create', 'name': name, 'path': path}, next_prompt=handler._get_anchor_prompt(skip=idx > 0))
@@ -132,12 +144,14 @@ def skill_manage(handler, args, response):
                 f.write(new_content)
         except Exception as e:
             revert_skill_prev(path)
+            reset_auto_patch_count(name)
             return StepOutcome({'status': 'error', 'msg': f'write: {e}'}, next_prompt="\n")
         _reset_skill_cache()
         try:
             sync_skills_to_l1()
         except Exception:
             pass
+        _maybe_reset_on_foreground(name)
         yield f"[Skill Manage] retired {name} (evolvable=false, file kept)\n"
         handler._pending_briefs.append(_build_skill_brief('retire', name, reason, path, handler.cwd))
         return StepOutcome({'status': 'ok', 'action': 'retire', 'name': name, 'path': path}, next_prompt=handler._get_anchor_prompt(skip=idx > 0))
@@ -157,13 +171,21 @@ def skill_manage(handler, args, response):
     ok, why = validate_skill(path)
     if not ok:
         revert_skill_prev(path)
+        reset_auto_patch_count(name)
         _reset_skill_cache()
         return StepOutcome({'status': 'invalid', 'reason': why, 'reverted': True}, next_prompt="\n")
+    # Ensure the patched skill is still loadable through the catalog (R9).
     _reset_skill_cache()
+    detail = get_skill_detail(name)
+    if detail.get('status') == 'error':
+        revert_skill_prev(path)
+        reset_auto_patch_count(name)
+        return StepOutcome({'status': 'invalid', 'reason': 'skill no longer loadable after patch', 'reverted': True}, next_prompt="\n")
     try:
         sync_skills_to_l1()
     except Exception:
         pass
+    _maybe_reset_on_foreground(name)
     yield f"[Skill Manage] patched {name} (.prev saved)\n"
     handler._pending_briefs.append(_build_skill_brief('patch', name, reason, path, handler.cwd))
     return StepOutcome({'status': 'ok', 'action': 'patch', 'name': name, 'path': path}, next_prompt=handler._get_anchor_prompt(skip=idx > 0))
