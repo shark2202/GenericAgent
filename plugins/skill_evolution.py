@@ -92,6 +92,135 @@ SCORE_SCHEMA = {
     "additionalProperties": False,
 }
 
+
+class ScorerDegraded(Exception):
+    """打分器降级信号(SubagentScorer failed/timed_out,或 InProcess 校验失败)。"""
+
+
+SCORER_SYSTEM_PROMPT = (
+    "你是技能评审官(scorer),只读候选 SKILL.md + task 历史 + 现有技能 catalog, "
+    "按 reusability(可复用性)/verifiedness(已验证性)/non_redundancy(非冗余性)三维度打分(0-100)。 "
+    "你不生成 skill,只评估候选 skill_md 是否值得落盘。 "
+    '返回 JSON: {"score":0-100, "verdict":"pass|reject|revise", '
+    '"dims":{"reusability":0-100,"verifiedness":0-100,"non_redundancy":0-100}, "rationale":"..."}。 '
+    "score>=阈值且 verdict=pass 才放行;reject/revise 或 score<阈值 → 拒绝。"
+)
+
+
+def _extract_json(content: str):
+    """容错从 LLM 文本抽 JSON 对象(支持 ```json 代码块 / 裸 JSON)。返回 dict 或 None。"""
+    if not content:
+        return None
+    # 先尝试抽 ```json ... ``` 代码块
+    m = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', content)
+    if m:
+        candidate = m.group(1)
+    else:
+        m = re.search(r'\{[\s\S]*\}', content)
+        if not m:
+            return None
+        candidate = m.group(0)
+    try:
+        return json.loads(candidate)
+    except Exception:
+        return None
+
+
+def _validate_obj(obj, schema: dict) -> None:
+    """手写最小 schema 校验(覆盖 type/required/properties/enum/minimum/maximum/additionalProperties)。
+
+    复用 subagent_manager 风格(零新依赖,jsonschema 不在 deps,YAGNI)。
+    校验失败 → raise ScorerDegraded。
+    """
+    if obj is None:
+        raise ScorerDegraded("score object is None")
+    if schema.get("type") == "object" and not isinstance(obj, dict):
+        raise ScorerDegraded("expected object")
+    for req in schema.get("required", []):
+        if req not in obj:
+            raise ScorerDegraded(f"missing required field: {req}")
+    for k, subschema in schema.get("properties", {}).items():
+        if k not in obj:
+            continue
+        v = obj[k]
+        t = subschema.get("type")
+        if t == "integer" and not isinstance(v, int):
+            raise ScorerDegraded(f"{k}: expected integer")
+        if t == "string" and not isinstance(v, str):
+            raise ScorerDegraded(f"{k}: expected string")
+        if t == "object" and not isinstance(v, dict):
+            raise ScorerDegraded(f"{k}: expected object")
+        if "enum" in subschema and v not in subschema["enum"]:
+            raise ScorerDegraded(f"{k}: {v!r} not in enum {subschema['enum']}")
+        if "minimum" in subschema and isinstance(v, (int, float)) and v < subschema["minimum"]:
+            raise ScorerDegraded(f"{k}: {v} < minimum {subschema['minimum']}")
+        if "maximum" in subschema and isinstance(v, (int, float)) and v > subschema["maximum"]:
+            raise ScorerDegraded(f"{k}: {v} > maximum {subschema['maximum']}")
+        if t == "object":
+            _validate_obj(v, subschema)  # 递归 dims
+    if schema.get("additionalProperties") is False:
+        allowed = set(schema.get("properties", {}).keys())
+        extra = set(obj.keys()) - allowed
+        if extra:
+            raise ScorerDegraded(f"additional properties not allowed: {extra}")
+
+
+def _build_scorer_user_msg(skill_md: str, history, catalog: str) -> str:
+    """构造评判官 user message。禁含 op['reason'] / generator CoT(D3)。
+
+    history 是任务客观历史(handler.history_info 快照),非 generator 判断,可接受。
+    """
+    if isinstance(history, (list, tuple)):
+        history_text = "\n".join(str(h) for h in list(history)[-40:])
+    else:
+        history_text = str(history)
+    return (
+        f"# 候选技能 SKILL.md\n\n{skill_md}\n\n"
+        f"---\n\n# 任务历史快照(最近 40 条,客观事实)\n\n{history_text}\n\n"
+        f"---\n\n# 现有技能 catalog(查冗余用)\n\n{catalog}\n\n"
+        "请按三维度打分并返回 JSON(只返回 JSON,无其他文本)。"
+    )
+
+
+class InProcessScorer:
+    """同进程二次 LLM 打分(弱独立兜底,OQ5 决议)。
+
+    弱独立性声明:同 client(同 session/backend.history),独立性靠 fresh messages + distinct
+    prompt role(system role = scorer 职责)软保证。这是 "better than no gate",非 "true independence";
+    SubagentScorer 才是真独立。与 v1 既有的 backend.history 污染行为一致(distill generator 调用本就 append)。
+    降级时 source="degraded" 留痕。
+    """
+
+    def __init__(self, client):
+        self._client = client
+
+    def score(self, op, skill_md, history, catalog) -> Verdict:
+        messages = [
+            {"role": "system", "content": SCORER_SYSTEM_PROMPT},
+            {"role": "user", "content": _build_scorer_user_msg(skill_md, history, catalog)},
+        ]
+        try:
+            resp = self._client.chat(messages=messages, tools=[])
+        except Exception as e:
+            sys.stderr.write(f"[scorer] inprocess chat failed: {e}\n")
+            return Verdict(score=0, verdict=VerdictKind.REJECT, dims={},
+                           rationale=f"chat error: {e}", source="degraded")
+        content = getattr(resp, 'content', '') or (resp if isinstance(resp, str) else '')
+        obj = _extract_json(content)
+        try:
+            _validate_obj(obj, SCORE_SCHEMA)
+        except ScorerDegraded as e:
+            return Verdict(score=0, verdict=VerdictKind.REJECT, dims={},
+                           rationale=f"invalid score obj: {e}", source="degraded")
+        return Verdict(
+            score=obj["score"],
+            verdict=VerdictKind(obj["verdict"]),
+            dims=obj["dims"],
+            rationale=obj["rationale"],
+            source="inprocess",
+        )
+
+
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
 

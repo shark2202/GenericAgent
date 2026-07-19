@@ -72,3 +72,103 @@ def test_threshold_defaults(monkeypatch):
     importlib.reload(se)
     assert se.GA_SKILL_SCORER_THRESHOLD == 60
     assert se.GA_SKILL_SCORER_TIMEOUT == 600
+
+
+# ── Task 2: InProcessScorer (6.1) ────────────────────────────────
+
+from plugins.skill_evolution import InProcessScorer, ScorerDegraded  # noqa: E402, F401
+
+
+class _FakeResp:
+    def __init__(self, content):
+        self.content = content
+
+
+class _FakeClient:
+    """记录 chat 调用,messages/tools 可断言;content 由构造注入。"""
+    def __init__(self, content):
+        self._content = content
+        self.calls = []  # list of (messages, tools)
+
+    def chat(self, messages=None, tools=None):
+        self.calls.append((messages, tools))
+        return _FakeResp(self._content)
+
+
+_VALID_SCORE_JSON = (
+    '{"score": 82, "verdict": "pass", '
+    '"dims": {"reusability": 80, "verifiedness": 85, "non_redundancy": 81}, '
+    '"rationale": "reusable pattern, verified in task"}'
+)
+
+
+def test_inprocess_scorer_maps_valid_json_to_verdict():
+    c = _FakeClient(_VALID_SCORE_JSON)
+    s = InProcessScorer(c)
+    v = s.score({"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                "md", ["h1", "h2"], "- cat: desc")
+    assert v.score == 82
+    # 用 .value 比较,而非枚举身份(==):Task 1 的 test_threshold_defaults 调
+    # importlib.reload(se) 会重建 VerdictKind 类,导致同值枚举身份不等(双类问题)。
+    # .value 对 reload 鲁棒,与 test_verdict_kind_enum_values 风格一致。
+    assert v.verdict.value == VerdictKind.PASS.value
+    assert v.dims == {"reusability": 80, "verifiedness": 85, "non_redundancy": 81}
+    assert v.rationale.startswith("reusable")
+    assert v.source == "inprocess"
+
+
+def test_inprocess_scorer_uses_fresh_messages_and_empty_tools():
+    """弱独立性(OQ5):fresh messages list + tools=[] 强制纯文本打分。"""
+    c = _FakeClient(_VALID_SCORE_JSON)
+    s = InProcessScorer(c)
+    s.score({"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+            "md", ["h1"], "- cat: d")
+    assert len(c.calls) == 1
+    messages, tools = c.calls[0]
+    assert tools == []                          # 强制纯文本打分
+    assert messages[0]["role"] == "system"      # distinct prompt role = scorer 职责
+    assert "评估" in messages[0]["content"] or "review" in messages[0]["content"].lower()
+
+
+def test_inprocess_scorer_desc_excludes_op_reason():
+    """user message 禁含 op['reason'](D3 独立性,InProcessScorer 同样适用)。"""
+    c = _FakeClient(_VALID_SCORE_JSON)
+    s = InProcessScorer(c)
+    s.score({"action": "create", "name": "x", "skill_md": "md",
+             "reason": "TOPSECRET_GENERATOR_REASON"},
+            "md", ["h1"], "- cat: d")
+    messages, _ = c.calls[0]
+    user_msg = messages[-1]["content"]
+    assert "TOPSECRET_GENERATOR_REASON" not in user_msg
+
+
+def test_inprocess_scorer_degrades_on_non_json():
+    """client.chat 返回非 JSON → Verdict(score=0, REJECT, source='degraded')。"""
+    c = _FakeClient("not json at all")
+    s = InProcessScorer(c)
+    v = s.score({"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                "md", ["h1"], "- cat: d")
+    assert v.score == 0
+    assert v.verdict.value == VerdictKind.REJECT.value
+    assert v.source == "degraded"
+
+
+def test_inprocess_scorer_degrades_on_missing_dim():
+    """dims 缺维度 → schema 校验失败 → 降级。"""
+    bad = '{"score": 50, "verdict": "pass", "dims": {"reusability": 50}, "rationale": "x"}'
+    c = _FakeClient(bad)
+    s = InProcessScorer(c)
+    v = s.score({"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                "md", ["h1"], "- cat: d")
+    assert v.source == "degraded"
+    assert v.verdict.value == VerdictKind.REJECT.value
+
+
+def test_inprocess_scorer_handles_codeblock_json():
+    """LLM 可能把 JSON 包在 ```json ... ``` 代码块里。"""
+    c = _FakeClient(f"```json\n{_VALID_SCORE_JSON}\n```")
+    s = InProcessScorer(c)
+    v = s.score({"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                "md", ["h1"], "- cat: d")
+    assert v.score == 82
+    assert v.source == "inprocess"
