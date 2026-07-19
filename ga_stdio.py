@@ -74,6 +74,18 @@ ERR_INTERNAL_ERROR = "internal_error"
 
 _REQUIRED_FIELDS = ("id", "type", "version")
 
+# Task 8 (S8/S9/Q6): slash/cmd routing sets.
+# _INJECTION_SLASH_CMDS mirrors the prompt_for dispatch table at
+# frontends/slash_cmds.py:605-612 — these commands return an injected prompt
+# string that we run as a new task (the bridge does NOT replicate the wording;
+# it just calls prompt_for and forwards). /scheduler is NOT here: it touches
+# local FS (reflect/scheduler.py) with no LLM, so the TUI handles it directly
+# and the bridge rejects it as slash_unsupported (out of v1 protocol scope).
+# _STATE_SLASH_CMDS are raw-forwarded to agentmain._handle_slash_cmd via
+# put_task(f"{cmd} {args}"); /session.* is matched by prefix below.
+_INJECTION_SLASH_CMDS = {"/update", "/autorun", "/morphling", "/goal", "/hive", "/conductor"}
+_STATE_SLASH_CMDS = {"/llm", "/resume"}  # /session.* handled by prefix match
+
 
 def _parse_line(line):
     """Parse one stdin line into a dict, or None if malformed (E2).
@@ -274,6 +286,12 @@ class BridgeCore:
             return
         if mtype == "approval/response":
             self.handle_approval_response(msg)
+            return
+        # Task 8 (S8/S9/Q6): slash/cmd forward — injection via prompt_for +
+        # raw state-class. handle_slash_cmd owns the three routing paths
+        # plus the slash_unsupported default; see its docstring.
+        if mtype == "slash/cmd":
+            self.handle_slash_cmd(msg)
             return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
@@ -762,6 +780,93 @@ class BridgeCore:
         ev.set()  # wake the blocked agent thread
         self.send({"id": msg["id"], "type": "approval/ack", "version": VERSION,
                    "task_id": task_id, "tool_id": tool_id, "status": "accepted"})
+
+    # ---- Task 8: slash/cmd forward — injection via prompt_for + raw state-class (S8/S9/Q6) ----
+    #
+    # Three routing paths plus a default reject, per design §10.8 / §6.6:
+    #   1. /scheduler → error{slash_unsupported} (out of protocol scope —
+    #      touches local FS via reflect/scheduler.py, no LLM; TUI handles it).
+    #   2. Injection-class (_INJECTION_SLASH_CMDS) → prompt_for(cmd, args)
+    #      returns an injected prompt → run as a new task via the Task 6 pool
+    #      (semaphore + _queued + _start_task_thread) → slash/result{task_id,
+    #      injected_prompt[:200]}. We do NOT replicate prompt_for's wording
+    #      (D8: single source of truth lives in slash_cmds.py).
+    #   3. State-class (/llm /resume /session.*) → raw put_task(f"{cmd} {args}")
+    #      so agentmain._handle_slash_cmd processes it internally →
+    #      slash/result{task_id} (no injected_prompt).
+    #   4. unknown → error{slash_unsupported}.
+    #
+    # Both injection and state-class reuse the Task 6 pool: semaphore.
+    # acquire(blocking=False) decides running-now vs queued; either way the
+    # ctx is registered in self.pool up front (so task/interrupt / approval
+    # can find it) and a slash/result is emitted with the allocated task_id.
+    # _release_task pops + starts queued tasks when a slot frees (FIFO).
+
+    def handle_slash_cmd(self, msg):
+        cmd = (msg.get("cmd") or "").strip()
+        args = msg.get("args", "") or ""
+        if not cmd.startswith("/"):
+            self.send_error("slash_unsupported", f"not a slash command: {cmd!r}",
+                            original_id=msg.get("id"))
+            return
+        # /scheduler is out of protocol scope (touches local FS, no LLM)
+        if cmd == "/scheduler":
+            self.send_error("slash_unsupported",
+                            "/scheduler is not part of the v1 protocol",
+                            original_id=msg.get("id"))
+            return
+        from frontends.slash_cmds import prompt_for
+        injected = None
+        if cmd in _INJECTION_SLASH_CMDS:
+            injected = prompt_for(cmd, args)
+        if injected is not None:
+            # injection-class: run injected prompt as a new task. Reuses the
+            # Task 6 pool contract: task/ack{running|queued} carries the
+            # allocated task_id (correlates to the upcoming task/delta/done
+            # stream), and slash/result carries the slash/cmd id → task_id
+            # correlation + injected prompt summary (design §10.8). Both are
+            # emitted so task/interrupt / approval can find the ctx whether
+            # running or queued, and the client can correlate the slash/cmd id
+            # → task_id. task/ack uses a fresh server id (not msg["id"]) so
+            # the slash/result's id stays == msg["id"] (the slash ack echo).
+            task_id = self._new_task_id()
+            ctx = TaskCtx(ga=None, dq=None, task_id=task_id, thread=None,
+                          mode="single", budget=None)
+            ctx._objective = injected
+            with self._pool_lock:
+                self.pool[task_id] = ctx
+            if self.semaphore.acquire(blocking=False):
+                self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
+                           "task_id": task_id, "status": "running"})
+                self._start_task_thread(ctx, injected, [])
+            else:
+                with self._pool_lock:
+                    self._queued.append((ctx, injected, [], msg["id"]))
+                self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
+                           "task_id": task_id, "status": "queued"})
+            self.send({"id": msg["id"], "type": "slash/result", "version": VERSION,
+                       "task_id": task_id,
+                       "injected_prompt": injected[:200]})
+            return
+        # state-class: raw forward to _handle_slash_cmd via put_task (agentmain.py:155-186)
+        if cmd in _STATE_SLASH_CMDS or cmd.startswith("/session."):
+            raw = f"{cmd} {args}".strip()
+            task_id = self._new_task_id()
+            ctx = TaskCtx(ga=None, dq=None, task_id=task_id, thread=None,
+                          mode="single", budget=None)
+            ctx._objective = raw
+            with self._pool_lock:
+                self.pool[task_id] = ctx
+            if self.semaphore.acquire(blocking=False):
+                self._start_task_thread(ctx, raw, [])
+            else:
+                with self._pool_lock:
+                    self._queued.append((ctx, raw, [], msg["id"]))
+            self.send({"id": msg["id"], "type": "slash/result", "version": VERSION,
+                       "task_id": task_id})
+            return
+        self.send_error("slash_unsupported", f"unknown slash command: {cmd!r}",
+                        original_id=msg.get("id"))
 
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.

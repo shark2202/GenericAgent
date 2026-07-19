@@ -902,3 +902,64 @@ def test_run_autonomous_emits_budget_done_when_seconds_exhausted():
     core.run_autonomous(ctx)
     reasons = [m for m in sent if m.get("type") == "task/done"]
     assert reasons and any(r["reason"] == "budget" for r in reasons)
+
+
+# ---- Task 8: slash/cmd forward — injection via prompt_for + raw state-class (S8/S9/Q6) ----
+#
+# Covers design §10.8 / §6.6 / tasks.md §3.10 / S8/S9 / Q6. handle_slash_cmd has
+# three routing paths plus a default reject:
+#   1. /scheduler → error{slash_unsupported} (out of protocol scope — touches
+#      local FS, no LLM; TUI handles it directly).
+#   2. Injection-class (/update /autorun /morphling /goal /hive /conductor) →
+#      frontends.slash_cmds.prompt_for(cmd, args) returns the injected prompt
+#      → run as a new task via put_task (reuses Task 6 pool + queueing) →
+#      slash/result{task_id, injected_prompt[:200]}.
+#   3. State-class (/llm /resume /session.*) → raw put_task(f"{cmd} {args}")
+#      so agentmain._handle_slash_cmd processes it internally →
+#      slash/result{task_id} (no injected_prompt).
+#   4. unknown → error{slash_unsupported}.
+#
+# Tests assert structure (which path was taken + which frame type emitted),
+# not the injected prompt's content — prompt_for wording is slash_cmds's
+# concern, not the bridge's.
+
+def test_slash_injection_command_routes_via_prompt_for():
+    """/goal <target> → prompt_for returns injected prompt → new task on a fresh GA."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    core._spawn_ga = lambda: _FakeGAWithAbort()
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_slash_cmd({"id": 1, "type": "slash/cmd",
+                           "cmd": "/goal", "args": "build a web"})
+    acks = [m for m in sent if m.get("type") == "task/ack"]
+    results = [m for m in sent if m.get("type") == "slash/result"]
+    assert len(acks) == 1
+    assert len(results) == 1
+    assert results[0].get("injected_prompt")
+    assert results[0].get("task_id") == acks[0]["task_id"]
+
+
+def test_slash_state_command_routes_raw():
+    """/llm 2 → raw put_task on a fresh GA (state-class, _handle_slash_cmd internal)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    captured = {}
+    class _GA(_FakeGAWithAbort):
+        def put_task(self, q, source=None, images=None):
+            captured["raw"] = q
+            dq = queue.Queue(); dq.put({"done": "ok", "source": source, "turn": 0, "outputs": []}); return dq
+    core._spawn_ga = lambda: _GA()
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_slash_cmd({"id": 1, "type": "slash/cmd", "cmd": "/llm", "args": "2"})
+    assert captured["raw"] == "/llm 2"
+    results = [m for m in sent if m.get("type") == "slash/result"]
+    assert len(results) == 1
+
+
+def test_slash_unsupported_command_emits_error():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_slash_cmd({"id": 1, "type": "slash/cmd", "cmd": "/scheduler", "args": ""})
+    assert sent[-1]["type"] == "error"
+    assert sent[-1]["code"] == "slash_unsupported"
