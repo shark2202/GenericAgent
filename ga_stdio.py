@@ -17,7 +17,9 @@ wired in Tasks 2-10; until then they return unknown_type.
 import sys
 import os
 import json
+import queue
 import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -61,6 +63,30 @@ def _serialize(msg):
     return json.dumps(msg, ensure_ascii=False) + "\n"
 
 
+class TaskCtx:
+    """Per-task runtime: one GenericAgent instance + its display_queue + control.
+
+    Task 2 scope: single-task serial (one GA, one task runs to completion).
+    Per-task pooling / concurrency is wired in Task 6; autonomous loop in
+    Task 7; approval flow in Task 8. Fields not used by Task 2 are reserved
+    so later tasks can extend without reshaping the dataclass.
+    """
+    def __init__(self, ga, dq, task_id, thread, mode="single", budget=None):
+        self.ga = ga
+        self.dq = dq
+        self.task_id = task_id
+        self.thread = thread
+        self.mode = mode            # "single" | "autonomous"
+        self.budget = budget        # {seconds?, turns?} for autonomous; None for single
+        self.start_time = time.time()
+        self.turns_used = 0
+        self.interrupted = False
+        self._objective = None
+        self.pending_approval = False
+        self._last_approval_input_ref = None
+        self._approval_input = None
+
+
 class BridgeCore:
     """Protocol state machine + stdio reader loop.
 
@@ -74,7 +100,13 @@ class BridgeCore:
         self._write_lock = threading.Lock()
         self._next_event_id = 1
         self.initialized = False
-        # pool / hooks / semaphore wired in later tasks
+        # Task 2: per-task pool + ga→task routing (hooks use the latter in Task 3)
+        self.pool = {}                  # {task_id: TaskCtx}
+        self.ga_to_task = {}            # {id(GA): task_id} for hook routing
+        self._task_counter = 0
+        self._tool_id_counter = 0
+        self._pool_lock = threading.Lock()
+        self._hooks_registered = False
 
     def _next_id(self):
         i = self._next_event_id
@@ -137,10 +169,135 @@ class BridgeCore:
                             f"got {mtype!r} before initialize (E3)",
                             original_id=msg.get("id"))
             return
+        # Task 2: single-task streaming path. task/start → handle_task_start
+        # assigns a task_id, spawns a GA, drains display_queue → task/delta
+        # + task/done. Other business types still fall through to unknown_type
+        # until wired in later tasks (Task 3+ for tool events, Task 4 for
+        # interrupt, Task 7 for autonomous, Task 8 for approval).
+        if mtype == "task/start":
+            self.handle_task_start(msg)
+            return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
         self.send_error(ERR_UNKNOWN_TYPE, f"{mtype} not implemented yet",
                         original_id=msg.get("id"))
+
+    # ---- Task 2: single-task streaming path ----
+
+    def _new_task_id(self):
+        self._task_counter += 1
+        return f"t{self._task_counter}"
+
+    def handle_task_start(self, msg):
+        """task/start → allocate task_id → spawn GA + put_task → task/ack.
+
+        Single-task serial path (S1): one GA instance per task, drained to
+        completion. Per-task pooling / concurrency is Task 6; the task_id is
+        carried from here on so the contract is observable now even though
+        only one task runs at a time.
+        """
+        prompt = msg.get("prompt", "")
+        mode = msg.get("mode", "single")
+        budget = msg.get("budget")
+        images = msg.get("images", [])
+        task_id = self._new_task_id()
+        ga = self._spawn_ga()           # Task 6 promotes this to a pool slot
+        dq = ga.put_task(prompt, source="stdio", images=images)
+        ctx = TaskCtx(ga=ga, dq=dq, task_id=task_id, thread=None,
+                      mode=mode, budget=budget)
+        ctx._objective = prompt
+        with self._pool_lock:
+            self.pool[task_id] = ctx
+            self.ga_to_task[id(ga)] = task_id
+        self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
+                   "task_id": task_id, "status": "running"})
+        t = threading.Thread(target=self._run_task, args=(ctx,), daemon=True)
+        ctx.thread = t
+        t.start()
+
+    def _spawn_ga(self):
+        """Create a fresh GenericAgent + run() daemon thread.
+
+        Mirrors ga_httpapp.py:10 (``threading.Thread(target=agent.run,
+        daemon=True).start()``). Task 6 wraps this in pool/semaphore.
+        """
+        from agentmain import GenericAgent
+        ga = GenericAgent()
+        ga.verbose = False
+        ga.inc_out = True
+        threading.Thread(target=ga.run, daemon=True).start()
+        return ga
+
+    def _run_task(self, ctx):
+        """Worker: drain display_queue for one task until done/interrupted."""
+        try:
+            if ctx.mode == "autonomous":
+                self.run_autonomous(ctx)      # wired in Task 7
+            else:
+                self.drain_display_queue(ctx)
+        except Exception as e:
+            self.send({"id": self._next_id(), "type": "task/done", "version": VERSION,
+                       "task_id": ctx.task_id, "reason": "error",
+                       "error": f"{type(e).__name__}: {e}"})
+        finally:
+            self._release_task(ctx)
+
+    def _release_task(self, ctx):
+        """Remove ctx from the pool and shut its GA down (MCP cleanup)."""
+        with self._pool_lock:
+            self.pool.pop(ctx.task_id, None)
+            if ctx.ga is not None:
+                self.ga_to_task.pop(id(ctx.ga), None)
+        try:
+            if ctx.ga is not None:
+                ctx.ga.shutdown()
+        except Exception:
+            pass
+
+    def drain_display_queue(self, ctx):
+        """Drain ctx.dq → emit task/delta + task/done. Used by single mode.
+
+        Mirrors ga_httpapp.py:25 (``while "done" not in (item := dq.get(...))``).
+        Items follow agentmain.py:229-235: ``{next|done, source, turn, outputs}``.
+        The error-shaped done (agentmain.py:239) appends a fenced block
+        ``\n```\n{format_error}\n````` to ``done``; we detect that to set
+        reason="error" and surface the text via the ``error`` field.
+        """
+        while True:
+            try:
+                item = ctx.dq.get(timeout=2200)
+            except queue.Empty:
+                self.send({"id": self._next_id(), "type": "task/done", "version": VERSION,
+                           "task_id": ctx.task_id, "reason": "error",
+                           "error": "display_queue timeout (2200s)"})
+                return
+            if "next" in item:
+                self.send({"id": self._next_id(), "type": "task/delta", "version": VERSION,
+                           "task_id": ctx.task_id, "content": item.get("next", ""),
+                           "turn": item.get("turn", 0)})
+                continue
+            if "done" in item:
+                done_text = item.get("done", "")
+                # agentmain except branch (agentmain.py:239) appends a trailing
+                # ```\n{format_error}\n``` block to done text on engine errors.
+                is_error = False
+                if "```" in done_text:
+                    parts = done_text.split("```")
+                    if len(parts) >= 3 and "Error" in parts[-2]:
+                        is_error = True
+                reason = "error" if is_error else (
+                    "interrupted" if ctx.interrupted else "completed")
+                done_msg = {"id": self._next_id(), "type": "task/done", "version": VERSION,
+                            "task_id": ctx.task_id, "reason": reason,
+                            "turn": item.get("turn", 0)}
+                if reason == "error":
+                    done_msg["error"] = done_text
+                self.send(done_msg)
+                return
+
+    def run_autonomous(self, ctx):
+        """Placeholder — wired in Task 7."""
+        raise NotImplementedError("autonomous wired in Task 7")
 
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.

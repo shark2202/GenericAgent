@@ -12,7 +12,9 @@ Covers Task 1 scope:
 import io
 import json
 import os
+import queue
 import sys
+import threading
 
 import pytest
 
@@ -108,18 +110,48 @@ def test_business_before_initialize_returns_not_initialized():
     assert err["original_id"] == 5
 
 
-def test_ready_then_task_start_returns_unknown_type():
-    """After initialize, business messages are accepted but not yet implemented (Task 2+)."""
-    out = _run_bridge([
+def test_ready_then_task_start_returns_ack():
+    """After initialize, task/start → task/ack{status:running} (Task 2 contract).
+
+    Replaces the Task-1 expectation (task/start → unknown_type). _spawn_ga is
+    stubbed so no real GA engine / LLM is constructed; the fake dq blocks the
+    drain thread so the synchronously-emitted task/ack can be read without
+    racing task/done writes.
+    """
+    stdin = io.StringIO("".join([
         _line({"id": 1, "type": "initialize", "version": "1", "capabilities": []}),
         _line({"id": 2, "type": "task/start", "version": "1", "prompt": "hi"}),
-    ])
-    assert len(out) == 2
+    ]))
+    stdout = io.StringIO()
+    bridge = ga_stdio.BridgeCore(stdin=stdin, stdout=stdout)
+    release = threading.Event()
+
+    class _BlockingDQ:
+        def get(self, timeout=None):
+            release.wait(timeout=10.0)
+            return {"done": "ok", "source": "user", "turn": 0, "outputs": ["ok"]}
+
+    class _FakeGA:
+        def put_task(self, query, source="user", images=None):
+            return _BlockingDQ()
+        def shutdown(self):
+            pass
+
+    bridge._spawn_ga = lambda: _FakeGA()
+    bridge.serve()
+    out = [json.loads(l) for l in stdout.getvalue().splitlines() if l.strip()]
     assert out[0]["type"] == "ready"
-    err = out[1]
-    assert err["type"] == "error"
-    assert err["code"] == "unknown_type"
-    assert err["original_id"] == 2
+    ack = [m for m in out if m["type"] == "task/ack"][0]
+    assert ack["status"] == "running"
+    assert ack["task_id"].startswith("t")
+    assert ack["id"] == 2  # echoes client id
+    assert ack["version"] == "1"
+    # release the parked drain thread + join so no thread leaks
+    ctxs = list(bridge.pool.values())
+    release.set()
+    for c in ctxs:
+        if c.thread is not None:
+            c.thread.join(timeout=2.0)
 
 
 # ---- required-field validation ----
@@ -204,3 +236,104 @@ def test_unknown_type_returns_unknown_type():
     assert err["type"] == "error"
     assert err["code"] == "unknown_type"
     assert err["original_id"] == 2
+
+
+# ---- Task 2: drain_display_queue + task/start → task/ack ----
+
+def test_drain_display_queue_emits_delta_then_done():
+    """drain turns {next,done} display_queue items into task/delta + task/done."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    dq = queue.Queue()
+    dq.put({"next": "hello", "source": "user", "turn": 1, "outputs": ["hello"]})
+    dq.put({"done": "hello world", "source": "user", "turn": 1, "outputs": ["hello world"]})
+    sent = []
+    core.send = lambda m: sent.append(m)  # capture
+    task_ctx = ga_stdio.TaskCtx(ga=None, dq=dq, task_id="t1", thread=None)
+    core.drain_display_queue(task_ctx)
+    types = [m["type"] for m in sent]
+    assert "task/delta" in types
+    assert types[-1] == "task/done"
+    done_msg = sent[-1]
+    assert done_msg["task_id"] == "t1"
+    assert done_msg["reason"] == "completed"
+    assert done_msg["version"] == "1"
+    assert "turn" in done_msg
+
+
+def test_drain_display_queue_error_done_emits_error_reason():
+    """A done carrying an error-shaped payload → task/done{reason:error}."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    dq = queue.Queue()
+    # agentmain except branch appends a fenced error block to done text (agentmain.py:239)
+    dq.put({"done": "partial\n```\nValueError: boom @ file:1\n```", "source": "user",
+            "turn": 0, "outputs": []})
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.drain_display_queue(ga_stdio.TaskCtx(ga=None, dq=dq, task_id="t9", thread=None))
+    assert sent[-1]["type"] == "task/done"
+    assert sent[-1]["reason"] == "error"
+    assert sent[-1].get("error")
+
+
+def test_drain_display_queue_timeout_emits_error_done():
+    """dq.get raising queue.Empty (timeout) → task/done{reason:error}."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+
+    class _EmptyQ:
+        def get(self, timeout=None):
+            raise queue.Empty()
+
+    ctx = ga_stdio.TaskCtx(ga=None, dq=_EmptyQ(), task_id="t_to", thread=None)
+    core.drain_display_queue(ctx)
+    assert sent, "expected at least one message"
+    assert sent[-1]["type"] == "task/done"
+    assert sent[-1]["reason"] == "error"
+    assert sent[-1].get("error")
+
+
+def test_handle_task_start_assigns_task_id_and_regs_pool():
+    """handle_task_start: assigns t<N> id, sends task/ack, registers TaskCtx in pool."""
+    core = ga_stdio.BridgeCore(stdout=io.StringIO())
+    sent = []
+    core.send = lambda m: sent.append(m)
+    release = threading.Event()
+
+    class _BlockingDQ:
+        def get(self, timeout=None):
+            release.wait(timeout=10.0)
+            return {"done": "ok", "source": "user", "turn": 0, "outputs": ["ok"]}
+
+    class _FakeGA:
+        def put_task(self, query, source="user", images=None):
+            return _BlockingDQ()
+        def shutdown(self):
+            pass
+
+    core._spawn_ga = lambda: _FakeGA()
+    core.handle_task_start({"id": 7, "type": "task/start", "version": "1",
+                            "prompt": "hello", "mode": "single"})
+    core.handle_task_start({"id": 8, "type": "task/start", "version": "1",
+                            "prompt": "again"})
+    acks = [m for m in sent if m["type"] == "task/ack"]
+    assert len(acks) == 2
+    assert acks[0]["task_id"] == "t1"  # first task
+    assert acks[0]["status"] == "running"
+    assert acks[0]["id"] == 7
+    assert acks[1]["task_id"] == "t2"  # second task increments
+    assert acks[1]["id"] == 8
+    # both registered in pool with their ctx
+    assert set(core.pool.keys()) == {"t1", "t2"}
+    assert core.pool["t1"].task_id == "t1"
+    assert core.pool["t2"].task_id == "t2"
+    assert core.pool["t1"].mode == "single"
+    assert core.pool["t1"].thread is not None
+    # ga→task routing populated (used by Task 3 hooks)
+    assert core.ga_to_task[id(core.pool["t1"].ga)] == "t1"
+    # release + join both drain threads so no thread leaks
+    ctxs = list(core.pool.values())
+    release.set()
+    for c in ctxs:
+        if c.thread is not None:
+            c.thread.join(timeout=2.0)
