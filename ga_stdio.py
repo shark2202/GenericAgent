@@ -20,6 +20,7 @@ import json
 import queue
 import threading
 import time
+import itertools
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -108,17 +109,33 @@ class BridgeCore:
     business handlers are wired in later tasks.
     """
 
-    def __init__(self, stdin=None, stdout=None):
+    def __init__(self, stdin=None, stdout=None, max_concurrency=None):
         self.stdin = stdin or sys.stdin
         self.stdout = stdout or sys.stdout
         self._write_lock = threading.Lock()
-        self._next_event_id = 1
         self.initialized = False
+        # Task 6 (T3-M1/C2 lock收口): itertools.count.__next__ is a C-level
+        # atomic under the GIL, so id generation is safe across the stdio
+        # reader thread + multiple agent-run threads spawned by the pool
+        # (semaphore max 4). Replaces the prior `x += 1` self-increment which
+        # was a read-modify-write race once Task 6 introduced real GA-thread
+        # concurrency. _next_id/_new_task_id/_tool_id_seq all draw from these.
+        self._event_id_seq = itertools.count(1)
+        self._task_id_seq = itertools.count(1)
+        self._tool_id_seq = itertools.count(1)
+        # Task 6: bounded concurrency (S2/Q8). max_concurrency defaults to the
+        # GA_STDIO_MAX_CONCURRENCY env var (4) so operators can tune without
+        # code changes. semaphore.acquire(blocking=False) is the gate;
+        # overflow task/starts park on the FIFO _queued list and are woken
+        # one-at-a-time from _release_task.
+        if max_concurrency is None:
+            max_concurrency = int(os.environ.get("GA_STDIO_MAX_CONCURRENCY", "4"))
+        self.max_concurrency = max_concurrency
+        self.semaphore = threading.Semaphore(max_concurrency)
         # Task 2: per-task pool + ga→task routing (hooks use the latter in Task 3)
         self.pool = {}                  # {task_id: TaskCtx}
         self.ga_to_task = {}            # {id(GA): task_id} for hook routing
-        self._task_counter = 0
-        self._tool_id_counter = 0
+        self._queued = []               # FIFO of (ctx, prompt, images, original_id)
         self._pool_lock = threading.Lock()
         self._hooks_registered = False
         # Task 5: approval loop state. _pending_approvals maps
@@ -128,9 +145,7 @@ class BridgeCore:
         self._ask_user_patched = False
 
     def _next_id(self):
-        i = self._next_event_id
-        self._next_event_id += 1
-        return i
+        return next(self._event_id_seq)
 
     def send(self, msg):
         """Write one JSON line to stdout (thread-safe)."""
@@ -152,7 +167,15 @@ class BridgeCore:
         self.send(err)
 
     def handle_initialize(self, msg):
-        """Capability negotiation (design §4)."""
+        """Capability negotiation (design §4).
+
+        Task 6: agent_info is filled with real values — llm_count via a
+        throwaway GenericAgent probe (constructed + list_llms + shutdown
+        right here, never enters the pool), mcp_connected via the singleton
+        MCPClientManager's registry. Both probes are best-effort: any failure
+        (no keys configured, MCP not started, agentmain import issues) falls
+        back to 0 so the handshake never blocks on environment problems.
+        """
         caps = msg.get("capabilities", []) or []
         missing = [c for c in caps if c not in SERVER_CAPABILITIES]
         if missing:
@@ -161,11 +184,27 @@ class BridgeCore:
                             original_id=msg.get("id"), missing=missing)
             return
         self.initialized = True
-        # agent_info stub — real values wired in Task 6 (needs GA instance)
+        llm_count = 0
+        try:
+            from agentmain import GenericAgent as _GA
+            probe = _GA()
+            llm_count = len(probe.list_llms())
+            probe.shutdown()
+        except Exception:
+            llm_count = 0
+        mcp_connected = 0
+        try:
+            from mcp_client import MCPClientManager
+            mgr = MCPClientManager.get_instance()
+            if mgr is not None:
+                mcp_connected = len(mgr.registry.get_server_names())
+        except Exception:
+            mcp_connected = 0
         self.send({"id": msg["id"], "type": "ready", "version": VERSION,
                    "capabilities": SERVER_CAPABILITIES,
                    "agent_info": {"name": "GenericAgent",
-                                  "mcp_connected": 0, "llm_count": 0}})
+                                  "mcp_connected": mcp_connected,
+                                  "llm_count": llm_count}})
 
     def dispatch(self, msg):
         """Route one parsed client message.
@@ -208,34 +247,88 @@ class BridgeCore:
                         original_id=msg.get("id"))
 
     # ---- Task 2: single-task streaming path ----
+    # ---- Task 6: per-task GA pool + bounded concurrency (S2/Q8) ----
 
     def _new_task_id(self):
-        self._task_counter += 1
-        return f"t{self._task_counter}"
+        return f"t{next(self._task_id_seq)}"
 
     def handle_task_start(self, msg):
-        """task/start → allocate task_id → spawn GA + put_task → task/ack.
+        """task/start → allocate task_id → maybe spawn GA + put_task → task/ack.
 
-        Single-task serial path (S1): one GA instance per task, drained to
-        completion. Per-task pooling / concurrency is Task 6; the task_id is
-        carried from here on so the contract is observable now even though
-        only one task runs at a time.
+        Task 6 (S2/Q8): bounded-concurrency pool. The ctx is always registered
+        in self.pool up front (so task/interrupt / approval can find it
+        whether it's running or queued). Then a non-blocking semaphore
+        acquire decides:
+          - acquired → emit task/ack{status:running} + _start_task_thread
+            (spawns a fresh GA, put_task, starts the drain worker).
+          - not acquired → park (ctx, prompt, images, original_id) on the FIFO
+            _queued list + emit task/ack{status:queued}. _release_task will
+            pop + start it when a running task frees a slot.
+
+        Task 7 wires the autonomous self-continuation loop; until then an
+        autonomous task simply put_tasks once and drains to a single done
+        (reason="completed", not "budget" — that's a Task 7 contract).
         """
         prompt = msg.get("prompt", "")
         mode = msg.get("mode", "single")
         budget = msg.get("budget")
         images = msg.get("images", [])
         task_id = self._new_task_id()
-        ga = self._spawn_ga()           # Task 6 promotes this to a pool slot
-        dq = ga.put_task(prompt, source="stdio", images=images)
-        ctx = TaskCtx(ga=ga, dq=dq, task_id=task_id, thread=None,
+        if mode == "autonomous" and not self._validate_budget(budget):
+            self.send_error("bad_budget",
+                            "autonomous requires budget{seconds? and/or turns?}",
+                            original_id=msg.get("id"))
+            return
+        ctx = TaskCtx(ga=None, dq=None, task_id=task_id, thread=None,
                       mode=mode, budget=budget)
         ctx._objective = prompt
         with self._pool_lock:
             self.pool[task_id] = ctx
-            self.ga_to_task[id(ga)] = task_id
-        self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
-                   "task_id": task_id, "status": "running"})
+        if self.semaphore.acquire(blocking=False):
+            self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
+                       "task_id": task_id, "status": "running"})
+            self._start_task_thread(ctx, prompt, images)
+        else:
+            with self._pool_lock:
+                self._queued.append((ctx, prompt, images, msg["id"]))
+            self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
+                       "task_id": task_id, "status": "queued"})
+
+    def _validate_budget(self, budget):
+        """autonomous budget shape: dict with at least one of seconds/turns.
+
+        seconds ∈ (int|float), turns ∈ int. Used by handle_task_start to gate
+        autonomous mode; the autonomous loop itself (budget enforcement +
+        reason="budget" done) is wired in Task 7.
+        """
+        if not isinstance(budget, dict):
+            return False
+        seconds = budget.get("seconds")
+        turns = budget.get("turns")
+        if seconds is None and turns is None:
+            return False
+        if seconds is not None and not isinstance(seconds, (int, float)):
+            return False
+        if turns is not None and not isinstance(turns, int):
+            return False
+        return True
+
+    def _start_task_thread(self, ctx, prompt, images):
+        """Spawn a fresh GA for ctx + put_task + start the drain worker.
+
+        Called both from handle_task_start (first run) and from _release_task
+        (waking a queued task). GA is created here (not in handle_task_start)
+        so queued tasks don't construct a GA they might never get to run —
+        important because GenericAgent() is heavy (MCP/LLM init). ga_to_task
+        is populated under _pool_lock so the tool_before / turn_after hook
+        closures observe a consistent reverse-routing map.
+        """
+        ga = self._spawn_ga()
+        ctx.ga = ga
+        with self._pool_lock:
+            self.ga_to_task[id(ga)] = ctx.task_id
+        dq = ga.put_task(prompt, source="stdio", images=images)
+        ctx.dq = dq
         t = threading.Thread(target=self._run_task, args=(ctx,), daemon=True)
         ctx.thread = t
         t.start()
@@ -307,7 +400,15 @@ class BridgeCore:
             self._release_task(ctx)
 
     def _release_task(self, ctx):
-        """Remove ctx from the pool and shut its GA down (MCP cleanup)."""
+        """Remove ctx from the pool, shut its GA down, release the semaphore
+        slot, and wake one queued task if any (FIFO).
+
+        Called from _run_task's finally block. Wake-order matters: pool/ga_to_task
+        cleanup + GA shutdown + semaphore.release() all happen BEFORE popping
+        _queued, so the woken task sees a free slot and a clean reverse-routing
+        map. The woken task's task/ack{status:running} is emitted here (not from
+        the woken thread) so the client sees the running transition in order.
+        """
         with self._pool_lock:
             self.pool.pop(ctx.task_id, None)
             if ctx.ga is not None:
@@ -317,6 +418,17 @@ class BridgeCore:
                 ctx.ga.shutdown()
         except Exception:
             pass
+        self.semaphore.release()
+        # wake one queued task if any
+        next_item = None
+        with self._pool_lock:
+            if self._queued:
+                next_item = self._queued.pop(0)
+        if next_item is not None:
+            nxt_ctx, nxt_prompt, nxt_images, _orig_id = next_item
+            self._start_task_thread(nxt_ctx, nxt_prompt, nxt_images)
+            self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
+                       "task_id": nxt_ctx.task_id, "status": "running"})
 
     def drain_display_queue(self, ctx):
         """Drain ctx.dq → emit task/delta + task/done. Used by single mode.
@@ -412,8 +524,8 @@ class BridgeCore:
             # agent_loop dispatch injects these internal keys (agent_loop.py:52/62)
             args.pop("_index", None)
             args.pop("_tool_num", None)
-            self._tool_id_counter += 1
-            tool_id = f"tool_{self._tool_id_counter}"
+            # T3-M1/C2: atomic under GIL — safe across concurrent agent threads
+            tool_id = f"tool_{next(self._tool_id_seq)}"
             if tool_name == "ask_user":
                 # ask_user is intercepted by the approval path (Task 5), not tool/call.
                 self._on_approval_request(task_id, tool_id, args)
@@ -473,8 +585,8 @@ class BridgeCore:
                 # GA not in pool — fall back to old non-blocking behavior
                 return {"status": "INTERRUPT", "intent": "HUMAN_INTERVENTION",
                         "data": {"question": question, "candidates": candidates or []}}
-            self._tool_id_counter += 1
-            tool_id = f"ask_{self._tool_id_counter}"
+            # T3-M1/C2: atomic under GIL — safe across concurrent agent threads
+            tool_id = f"ask_{next(self._tool_id_seq)}"
             ev = threading.Event()
             box = {}
             self._pending_approvals[(task_id, tool_id)] = (ev, box)

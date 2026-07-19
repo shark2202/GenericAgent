@@ -15,6 +15,7 @@ import os
 import queue
 import sys
 import threading
+import time
 
 import pytest
 
@@ -528,11 +529,18 @@ def test_tool_before_resilience_missing_tool_name():
 class _FakeGAWithAbort:
     """Stand-in GA with a recording abort() — proves handle_task_interrupt
     delegates to the engine's existing abort extension point.
+
+    Task 6 also uses this as the _spawn_ga return value for the bounded-
+    concurrency tests, so it needs a put_task too — returning an empty
+    queue.Queue makes the drain worker block on dq.get(2200s) and stay out
+    of the way of the ack-status assertions (no spurious task/done).
     """
     def __init__(self):
         self.aborted = False
     def abort(self):
         self.aborted = True
+    def put_task(self, query, source="user", images=None):
+        return queue.Queue()
     def shutdown(self):
         pass
 
@@ -778,3 +786,48 @@ def test_patch_ask_user_reroutes_ga_module_global():
             "ga.ask_user must be rerouted to bridge version (C1)"
     finally:
         ga.ask_user = original  # restore for test isolation
+
+
+# ---- Task 6: per-task GA pool + bounded concurrency (S2/Q8) ----
+#
+# Covers design §10.6 / §6.2 / tasks.md §3.4 / S2 / Q8. handle_task_start now
+# acquires from a counting Semaphore (max_concurrency, default 4, env-override
+# via GA_STDIO_MAX_CONCURRENCY). Overflow task/starts return task/ack{status:
+# queued} and park on a FIFO _queued list; when a running task's _release_task
+# fires (worker finally block), it pops the head of _queued and starts it on a
+# fresh GA via _start_task_thread — the woken task's running ack is emitted
+# from _release_task. Tests assert structure (statuses + _queued len), not
+# timing; the sleep gives the woken thread a moment to ack.
+
+def test_task_start_over_limit_returns_queued():
+    """max_concurrency=2; 3rd task_start → task/ack{status:queued}."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"), max_concurrency=2)
+    core._spawn_ga = lambda: _FakeGAWithAbort()  # avoid real GA spawn in unit test
+    acks = []
+    core.send = lambda m: acks.append(m)
+    for i in range(3):
+        core.handle_task_start({"id": i, "type": "task/start",
+                                "prompt": f"p{i}", "mode": "single"})
+    statuses = [a.get("status") for a in acks if a.get("type") == "task/ack"]
+    assert statuses[:2] == ["running", "running"]
+    assert statuses[2] == "queued"
+    assert len(core._queued) == 1
+
+
+def test_release_wakes_queued_task():
+    """When a running task releases, the next queued task starts (running)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"), max_concurrency=1)
+    ga = _FakeGAWithAbort()
+    core._spawn_ga = lambda: ga
+    acks = []
+    core.send = lambda m: acks.append(m)
+    core.handle_task_start({"id": 1, "type": "task/start", "prompt": "p1"})
+    core.handle_task_start({"id": 2, "type": "task/start", "prompt": "p2"})
+    # second is queued
+    assert acks[-1]["status"] == "queued"
+    # simulate first task done → release
+    first_ctx = list(core.pool.values())[0]
+    core._release_task(first_ctx)
+    time.sleep(0.05)  # let woken thread ack
+    running = [a for a in acks if a.get("status") == "running"]
+    assert len(running) >= 2
