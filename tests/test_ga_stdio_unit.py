@@ -514,3 +514,77 @@ def test_tool_before_resilience_missing_tool_name():
     calls = [m for m in sent if m["type"] == "tool/call"]
     if calls:
         assert calls[0]["name"] == "?"
+
+
+# ---- Task 4: task/interrupt → abort → task/done{reason:interrupted} (S3) ----
+#
+# Covers design §6.5 line 167 / tasks.md §3.5. The interrupt path: client sends
+# task/interrupt{task_id} → handle_task_interrupt finds the TaskCtx, sets the
+# interrupted flag, and calls ctx.ga.abort() (agentmain.py:137-141). The GA's
+# run() thread then breaks on stop_sig (agentmain.py:224) and still puts a done
+# item on display_queue (agentmain.py:235). drain_display_queue inspects
+# ctx.interrupted (set here) to choose reason="interrupted" over "completed".
+
+class _FakeGAWithAbort:
+    """Stand-in GA with a recording abort() — proves handle_task_interrupt
+    delegates to the engine's existing abort extension point.
+    """
+    def __init__(self):
+        self.aborted = False
+    def abort(self):
+        self.aborted = True
+    def shutdown(self):
+        pass
+
+
+def test_handle_task_interrupt_calls_abort_and_sets_flag():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithAbort()
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id="t7", thread=None)
+    with core._pool_lock:
+        core.pool["t7"] = ctx
+        core.ga_to_task[id(ga)] = "t7"
+    core.handle_task_interrupt({"id": 100, "type": "task/interrupt", "task_id": "t7"})
+    assert ga.aborted is True
+    assert ctx.interrupted is True
+
+
+def test_handle_task_interrupt_unknown_task_id_emits_error():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_task_interrupt({"id": 100, "type": "task/interrupt", "task_id": "nope"})
+    assert sent[-1]["type"] == "error"
+    assert sent[-1]["code"] == "unknown_task"
+
+
+def test_drain_display_queue_interrupted_flag_emits_interrupted_reason():
+    """When ctx.interrupted was set by handle_task_interrupt, the subsequent
+    done from display_queue (agentmain still puts done after stop_sig break)
+    must come out as task/done{reason:interrupted}, not "completed"."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    dq = queue.Queue()
+    # non-error-shaped done (no fenced Error block) → normally "completed"
+    dq.put({"done": "partial", "source": "user", "turn": 2, "outputs": ["partial"]})
+    sent = []
+    core.send = lambda m: sent.append(m)
+    ctx = ga_stdio.TaskCtx(ga=None, dq=dq, task_id="t_int", thread=None)
+    ctx.interrupted = True  # set by handle_task_interrupt earlier
+    core.drain_display_queue(ctx)
+    assert sent[-1]["type"] == "task/done"
+    assert sent[-1]["reason"] == "interrupted"
+    assert sent[-1]["task_id"] == "t_int"
+    assert "error" not in sent[-1]  # interrupted is not an error frame
+
+
+def test_dispatch_routes_task_interrupt_after_ready():
+    """dispatch must route task/interrupt → handle_task_interrupt once
+    initialized; verified by monkeypatching the handler to a sentinel."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    core.initialized = True
+    routed = []
+    core.handle_task_interrupt = lambda msg: routed.append(msg)
+    core.dispatch({"id": 42, "type": "task/interrupt",
+                   "version": "1", "task_id": "t1"})
+    assert routed == [{"id": 42, "type": "task/interrupt",
+                       "version": "1", "task_id": "t1"}]

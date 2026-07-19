@@ -191,6 +191,9 @@ class BridgeCore:
         if mtype == "task/start":
             self.handle_task_start(msg)
             return
+        if mtype == "task/interrupt":
+            self.handle_task_interrupt(msg)
+            return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
         self.send_error(ERR_UNKNOWN_TYPE, f"{mtype} not implemented yet",
@@ -241,6 +244,36 @@ class BridgeCore:
         ga.inc_out = True
         threading.Thread(target=ga.run, daemon=True).start()
         return ga
+
+    def handle_task_interrupt(self, msg):
+        """task/interrupt{task_id} → ctx.interrupted + ga.abort() (S3).
+
+        Design §6.5 line 167. Reuses the engine's existing abort extension
+        point (agentmain.py:137-141): abort() sets stop_sig + appends to
+        handler.code_stop_signal, so run()'s ``if self.stop_sig: break``
+        (agentmain.py:224) fires and run() still puts a ``done`` item on the
+        display_queue (agentmain.py:235). The drain loop then reads
+        ctx.interrupted to choose ``reason="interrupted"`` over "completed".
+
+        We do NOT emit task/done here — the drain worker owns terminal
+        frames for the task (single source of truth). We only ack.
+        """
+        task_id = msg.get("task_id")
+        with self._pool_lock:
+            ctx = self.pool.get(task_id)
+        if ctx is None:
+            self.send_error("unknown_task", f"no running task {task_id!r}",
+                            original_id=msg.get("id"))
+            return
+        ctx.interrupted = True
+        try:
+            ctx.ga.abort()
+        except Exception as e:
+            self.send_error("interrupt_failed", f"{type(e).__name__}: {e}",
+                            original_id=msg.get("id"))
+            return
+        self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
+                   "task_id": task_id, "status": "interrupting"})
 
     def _run_task(self, ctx):
         """Worker: drain display_queue for one task until done/interrupted."""
