@@ -20,7 +20,7 @@
 - [x] 3.3 桥接 `GenericAgent.put_task` → 排空 `display_queue` → 发 `task/delta`/`tool/call`/`tool/result`/`task/done`（参考 `agentmain.py:229-235` item 形状 + `assets/ga_httpapp.py` 排空逻辑）
 - [x] 3.4 实现 `task/start` 返回 `task_id` + 多会话并发（多 put_task 并行排空）
 - [x] 3.5 实现 `task/interrupt` → `agent.abort()` → `task/done{reason:interrupted}`
-- [ ] 3.6 实现 autonomous 生命周期：`task/start{mode:autonomous,budget}` → 持续 delta → budget 耗尽 `task/done{reason:budget}`（参考 `reflect/goal_mode.py` 自续）
+- [x] 3.6 实现 autonomous 生命周期：`task/start{mode:autonomous,budget}` → 持续 delta → budget 耗尽 `task/done{reason:budget}`（参考 `reflect/goal_mode.py` 自续）
 - [x] 3.7 实现 approval 人机回路：agent 发 `approval/request`，等 client 响应后继续
 - [ ] 3.8 实现 MCP 可见性查询：经 `MCPClientManager.get_all_tools_summary()` 返回
 - [ ] 3.9 实现 `llm/list`/`llm/select`（桥接 `agent.list_llms()`/`next_llm(n)`）+ `session/resume`（恢复 `llmclient.backend.history`）

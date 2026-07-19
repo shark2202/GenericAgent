@@ -30,6 +30,40 @@ SERVER_CAPABILITIES = [
     "mcp", "slash", "llm-switch", "session-resume",
 ]
 
+# Task 7: autonomous continuation / budget-limit prompt templates.
+# These replicate the CONTINUATION_PROMPT pattern from reflect/goal_mode.py:26-69
+# WITHOUT importing reflect (D5: reflect's script control is not exposed to the
+# protocol; the bridge owns the continuation loop and re-feeds these prompts
+# itself). Wording is paraphrased; both templates are bridge-owned constants.
+CONTINUATION_PROMPT = """[Autonomous — 持续优化]
+
+<objective>
+{objective}
+</objective>
+
+⏱ 已用 {elapsed_min:.0f} 分钟，剩余约 {remaining_min:.0f} 分钟。第 {turn} 次唤醒。
+
+你正处在 autonomous 模式下工作：无法宣告完成，你会被持续唤醒直到预算耗尽。
+唤醒后流程（3选1）：
+1. 创造阶段(第一次唤醒)：分析 objective，在 cwd 建工作文件夹，严格按 objective 执行
+2. 检验阶段：换视角检验产出，从读者/用户/测试工程师角度找问题
+3. 改进阶段：针对检验报告实质改进交付物
+
+原则：每次唤醒交替检验与改进；除非严重问题不全部重写；交付物不混入"已检验"等中间信息。
+"""
+
+BUDGET_LIMIT_PROMPT = """[Autonomous — 预算耗尽，收口]
+
+<objective>
+{objective}
+</objective>
+
+⏱ 预算已耗尽。这是最后一轮。请执行收口：
+1. 总结本次所有进展
+2. 列出未完成事项和 next step
+3. 确保工作文件夹记录关键成果
+"""
+
 # Error codes (design §7)
 ERR_BAD_JSON = "bad_json"
 ERR_NOT_INITIALIZED = "not_initialized"
@@ -484,8 +518,91 @@ class BridgeCore:
                 return
 
     def run_autonomous(self, ctx):
-        """Placeholder — wired in Task 7."""
-        raise NotImplementedError("autonomous wired in Task 7")
+        """Bridge-owned autonomous continuation loop (D5: no reflect import).
+
+        Re-feeds CONTINUATION_PROMPT until budget exhausted, then
+        BUDGET_LIMIT_PROMPT for wrap-up, then task/done{reason:budget}.
+        task/interrupt → reason:interrupted. The first put_task (original
+        objective) was done by _start_task_thread; we drain it as iteration
+        0, then loop.
+
+        Single source of truth for autonomous terminal frames: run_autonomous
+        emits task/done{budget,interrupted,error-via-drain-timeout}. The
+        _run_task except wrapper only fires if run_autonomous itself raises
+        (then reason=error). tool/call + tool/result are emitted by the
+        tool_before/turn_after hook callbacks (Task 3) on the agent thread —
+        NOT by _drain_one_task_iteration, which only emits task/delta.
+        """
+        budget = ctx.budget or {}
+        seconds = budget.get("seconds")
+        turns = budget.get("turns")
+        objective = ctx._objective or "continue the task"
+        # iteration 0: drain the first put_task (original objective). In
+        # production this was issued by _start_task_thread (ctx.dq already
+        # set); guard against the test path that calls run_autonomous
+        # directly without _start_task_thread by issuing it lazily here.
+        if ctx.dq is None:
+            ctx.dq = ctx.ga.put_task(objective, source="stdio")
+        self._drain_one_task_iteration(ctx)
+        if ctx.interrupted:
+            self._emit_done(ctx, "interrupted"); return
+        while True:
+            if ctx.interrupted:
+                self._emit_done(ctx, "interrupted"); return
+            elapsed = time.time() - ctx.start_time
+            ctx.turns_used += 1
+            seconds_exhausted = (seconds is not None and elapsed >= seconds)
+            turns_exhausted = (turns is not None and ctx.turns_used > turns)
+            if seconds_exhausted or turns_exhausted:
+                prompt = BUDGET_LIMIT_PROMPT.format(objective=objective)
+                ctx.dq = ctx.ga.put_task(prompt, source="stdio")
+                self._drain_one_task_iteration(ctx)
+                self._emit_done(ctx, "budget"); return
+            remaining = (seconds - elapsed) if seconds is not None else float("inf")
+            prompt = CONTINUATION_PROMPT.format(
+                objective=objective,
+                elapsed_min=elapsed / 60,
+                remaining_min=remaining / 60,
+                turn=ctx.turns_used)
+            ctx.dq = ctx.ga.put_task(prompt, source="stdio")
+            self._drain_one_task_iteration(ctx)
+            if ctx.interrupted:
+                self._emit_done(ctx, "interrupted"); return
+
+    def _drain_one_task_iteration(self, ctx):
+        """Drain display_queue for one put_task iteration (until done).
+
+        Emits task/delta for each ``next`` item; returns when the engine
+        posts a ``done`` item. The caller (run_autonomous) then decides
+        whether to re-feed a continuation prompt or terminate. This is
+        intentionally narrower than drain_display_queue: it does NOT emit
+        task/done (the caller owns terminal frames for autonomous) and it
+        does NOT touch tool/call|tool/result (those are hook-owned, Task 3).
+        """
+        while True:
+            try:
+                item = ctx.dq.get(timeout=2200)
+            except queue.Empty:
+                self._emit_done(ctx, "error", error="display_queue timeout")
+                return
+            if "next" in item:
+                self.send({"id": self._next_id(), "type": "task/delta", "version": VERSION,
+                           "task_id": ctx.task_id, "content": item.get("next", ""),
+                           "turn": item.get("turn", 0)})
+                continue
+            if "done" in item:
+                return   # one iteration complete; caller decides next
+
+    def _emit_done(self, ctx, reason, error=None):
+        """Emit one task/done frame for an autonomous task (single source of
+        truth for autonomous terminal frames). reason ∈ {budget, interrupted,
+        error}. Called by run_autonomous / _drain_one_task_iteration timeout."""
+        done = {"id": self._next_id(), "type": "task/done", "version": VERSION,
+                "task_id": ctx.task_id, "reason": reason,
+                "turn": getattr(ctx, "turns_used", 0)}
+        if error:
+            done["error"] = error
+        self.send(done)
 
     # ---- Task 3: hook routing — tool_before→tool/call, turn_after→tool/result ----
     #

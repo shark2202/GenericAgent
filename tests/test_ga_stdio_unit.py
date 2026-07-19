@@ -856,3 +856,49 @@ def test_release_hands_off_slot_without_semaphore_release():
     last = [a for a in acks if a.get("type") == "task/ack"][-1]
     assert last["status"] == "queued", \
         "task3 must queue — slot still held by handed-off task2, got " + str(last["status"])
+
+
+# ---- Task 7: autonomous continuation loop + budget{seconds,turns} (S7/Q5) ----
+
+def test_validate_budget_requires_at_least_one_field():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    assert core._validate_budget({"seconds": 2}) is True
+    assert core._validate_budget({"turns": 1}) is True
+    assert core._validate_budget({"seconds": 2, "turns": 3}) is True
+    assert core._validate_budget({}) is False
+    assert core._validate_budget(None) is False
+    assert core._validate_budget("oops") is False
+
+
+def test_run_autonomous_emits_budget_done_when_seconds_exhausted():
+    """With budget{seconds:0} the first continuation is immediately the wrap-up
+    round → task/done{reason:budget}."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+
+    class _GA:
+        def __init__(self):
+            self.calls = 0
+        def put_task(self, prompt, source=None, images=None):
+            dq = queue.Queue()
+            if self.calls == 0:
+                dq.put({"next": "work", "source": source, "turn": 1, "outputs": ["work"]})
+                dq.put({"done": "work done", "source": source, "turn": 1, "outputs": ["work done"]})
+            else:
+                dq.put({"done": "[wrap up]", "source": source, "turn": 2, "outputs": ["[wrap]"]})
+            self.calls += 1
+            return dq
+        def abort(self): pass
+        def shutdown(self): pass
+
+    ctx = ga_stdio.TaskCtx(ga=_GA(), dq=None, task_id="tA", thread=None,
+                           mode="autonomous", budget={"seconds": 0})
+    import time as _t
+    ctx.start_time = _t.time() - 1   # force elapsed >= seconds immediately
+    with core._pool_lock:
+        core.pool["tA"] = ctx
+        core.ga_to_task[id(ctx.ga)] = "tA"
+    core.run_autonomous(ctx)
+    reasons = [m for m in sent if m.get("type") == "task/done"]
+    assert reasons and any(r["reason"] == "budget" for r in reasons)
