@@ -400,14 +400,12 @@ class BridgeCore:
             self._release_task(ctx)
 
     def _release_task(self, ctx):
-        """Remove ctx from the pool, shut its GA down, release the semaphore
-        slot, and wake one queued task if any (FIFO).
+        """Remove ctx from the pool, shut its GA down, and hand off the slot
+        to one queued task if any (FIFO); otherwise release the semaphore.
 
-        Called from _run_task's finally block. Wake-order matters: pool/ga_to_task
-        cleanup + GA shutdown + semaphore.release() all happen BEFORE popping
-        _queued, so the woken task sees a free slot and a clean reverse-routing
-        map. The woken task's task/ack{status:running} is emitted here (not from
-        the woken thread) so the client sees the running transition in order.
+        Slot hand-off (not release-then-wake) avoids a race where a concurrent
+        stdio-reader task/start acquires a just-released slot while the woken
+        queued task also starts without acquiring, exceeding max_concurrency.
         """
         with self._pool_lock:
             self.pool.pop(ctx.task_id, None)
@@ -418,8 +416,6 @@ class BridgeCore:
                 ctx.ga.shutdown()
         except Exception:
             pass
-        self.semaphore.release()
-        # wake one queued task if any
         next_item = None
         with self._pool_lock:
             if self._queued:
@@ -429,6 +425,8 @@ class BridgeCore:
             self._start_task_thread(nxt_ctx, nxt_prompt, nxt_images)
             self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
                        "task_id": nxt_ctx.task_id, "status": "running"})
+        else:
+            self.semaphore.release()
 
     def drain_display_queue(self, ctx):
         """Drain ctx.dq → emit task/delta + task/done. Used by single mode.

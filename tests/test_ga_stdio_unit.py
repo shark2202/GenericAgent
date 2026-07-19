@@ -831,3 +831,28 @@ def test_release_wakes_queued_task():
     time.sleep(0.05)  # let woken thread ack
     running = [a for a in acks if a.get("status") == "running"]
     assert len(running) >= 2
+
+
+def test_release_hands_off_slot_without_semaphore_release():
+    """Race fix (Task 6 main concern): when _queued is non-empty, _release_task
+    must hand off the slot to the next queued task WITHOUT calling
+    semaphore.release() — else a concurrent stdio-reader task/start acquires
+    the just-released slot while the woken queued task also starts without
+    acquiring, exceeding max_concurrency by 1."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"), max_concurrency=1)
+    ga1, ga2, ga3 = _FakeGAWithAbort(), _FakeGAWithAbort(), _FakeGAWithAbort()
+    seq = iter([ga1, ga2, ga3])
+    core._spawn_ga = lambda: next(seq)
+    acks = []; core.send = lambda m: acks.append(m)
+    core.handle_task_start({"id": 1, "type": "task/start", "prompt": "p1"})  # running
+    core.handle_task_start({"id": 2, "type": "task/start", "prompt": "p2"})  # queued
+    assert acks[-1]["status"] == "queued"
+    assert core.semaphore._value == 0  # 1 running, max 1
+    first_ctx = next(c for c in core.pool.values() if c.ga is ga1)
+    core._release_task(first_ctx)  # hand off slot to queued task2
+    assert core.semaphore._value == 0, \
+        "hand-off must not release semaphore (race fix), got " + str(core.semaphore._value)
+    core.handle_task_start({"id": 3, "type": "task/start", "prompt": "p3"})
+    last = [a for a in acks if a.get("type") == "task/ack"][-1]
+    assert last["status"] == "queued", \
+        "task3 must queue — slot still held by handed-off task2, got " + str(last["status"])
