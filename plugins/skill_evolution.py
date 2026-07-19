@@ -22,6 +22,9 @@ import os
 import re
 import sys
 import threading
+from dataclasses import dataclass
+from enum import Enum
+from typing import Protocol
 
 import plugins.hooks as hooks
 from skill_loader import _get_skills_catalog
@@ -29,6 +32,65 @@ from skill_loader import _get_skills_catalog
 SKILL_DISTILL_MIN_TURNS = 6
 MAX_AUTO_PATCH_PER_SKILL = 5        # 熔断：单技能连续自动 patch 上限（D8）
 MAX_CHANGES_PER_DISTILL = 3        # 熔断：单次蒸馏改技能上限（D8；v1 一次只产 1 op）
+
+# ── Skill scoring gate (hermes-isolated-skill-scorer) ─────────────
+# Design: docs/superpowers/specs/2026-07-19-hermes-isolated-skill-scorer-design.md §2
+# 闸门插在 distill() 的 _parse_op 与 _apply_op 之间(L148 / L152)。
+# gate off (GA_SKILL_EVOLUTION_ENABLED != '1' 或 GA_SKILL_SCORER no-op) → v1 行为。
+GA_SKILL_SCORER_THRESHOLD = int(os.environ.get("GA_SKILL_SCORER_THRESHOLD", "60"))
+GA_SKILL_SCORER_TIMEOUT = int(os.environ.get("GA_SKILL_SCORER_TIMEOUT", "600"))
+
+
+class VerdictKind(Enum):
+    PASS = "pass"
+    REJECT = "reject"
+    REVISE = "revise"
+
+
+@dataclass
+class Verdict:
+    score: int                          # 0-100
+    verdict: VerdictKind
+    dims: dict                          # {reusability, verifiedness, non_redundancy}: 0-100
+    rationale: str
+    source: str = "inprocess"           # "inprocess" | "subagent" | "degraded"  (留痕用)
+
+
+class Scorer(Protocol):
+    """打分器接口。score(op, skill_md, history, catalog) -> Verdict。
+
+    op: distill() _parse_op 产出的 dict(action/name/skill_md/reason)。
+    skill_md: 候选 SKILL.md 全文(op['skill_md'])。
+    history: task history_info 快照(列表或拼接串;评判官看客观历史,非 generator 判断)。
+    catalog: 现有技能 catalog 文本(查冗余用)。
+    """
+
+    def score(self, op, skill_md: str, history, catalog: str) -> Verdict: ...
+
+
+# 打分对象 JSON schema(传 SubagentScorer.run_single(schema=...) / InProcessScorer 解析校验)
+# v1 required 锁 3 维(OQ4 决议);dims.additionalProperties:false 严格锁;
+# 后续加维度需先改 schema,本 change 不动。
+SCORE_SCHEMA = {
+    "type": "object",
+    "required": ["score", "verdict", "dims", "rationale"],
+    "properties": {
+        "score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "verdict": {"type": "string", "enum": ["pass", "reject", "revise"]},
+        "dims": {
+            "type": "object",
+            "required": ["reusability", "verifiedness", "non_redundancy"],
+            "properties": {
+                "reusability": {"type": "integer", "minimum": 0, "maximum": 100},
+                "verifiedness": {"type": "integer", "minimum": 0, "maximum": 100},
+                "non_redundancy": {"type": "integer", "minimum": 0, "maximum": 100},
+            },
+            "additionalProperties": False,
+        },
+        "rationale": {"type": "string"},
+    },
+    "additionalProperties": False,
+}
 
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
