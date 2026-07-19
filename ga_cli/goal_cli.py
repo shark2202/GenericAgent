@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import textwrap
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -111,6 +112,54 @@ def cmd_run(args):
         goal = ctrl.run(args.goal_id, args.token)
         print(f"✅ Goal running: {goal.id}")
         print(f"   State: {goal.state.value}")
+
+        # Spawn the runner subprocess. spawn_runner launches a daemon pump
+        # thread that drains runner events and drives the goal FSM to a
+        # terminal state. The daemon dies if the main thread exits, so we
+        # must block here and poll until completion.
+        session_id = ctrl.spawn_runner(goal.id)
+        print(f"   Runner session: {session_id}")
+
+        terminal = {
+            GoalState.DONE, GoalState.FAILED,
+            GoalState.BUDGET_EXHAUSTED, GoalState.TIMEOUT,
+        }
+        interval = float(getattr(args, 'poll_interval', None) or 0.5)
+        last_state = goal.state
+        start = time.time()
+        cur = goal
+
+        while cur.state not in terminal:
+            cur = ctrl.status(args.goal_id)
+            if cur is None:
+                print(f"\n❌ Goal vanished while polling: {args.goal_id}", file=sys.stderr)
+                sys.exit(1)
+            if cur.state != last_state:
+                sys.stderr.write("\n")
+                print(f"   State: {cur.state.value}")
+                last_state = cur.state
+            if cur.state in terminal:
+                break
+            # heartbeat progress (stderr keeps stdout clean for the deliverable)
+            elapsed = time.time() - start
+            sys.stderr.write(f"\r   ⏳ {cur.state.value} ({elapsed:.0f}s)…")
+            sys.stderr.flush()
+            time.sleep(interval)
+
+        # clear the heartbeat line
+        sys.stderr.write("\r" + " " * 48 + "\r")
+        sys.stderr.flush()
+
+        if cur.state == GoalState.DONE:
+            d = store.get_deliverable(goal.id)
+            print("\n🏁 DONE")
+            if d and d.content:
+                print(d.content)
+            else:
+                print("(goal completed but produced no deliverable)")
+        else:
+            print(f"\n❌ Goal ended in state: {cur.state.value}", file=sys.stderr)
+            sys.exit(1)
     except ConfirmTokenError as e:
         print(f"❌ Run failed (token): {e}", file=sys.stderr)
         sys.exit(1)
@@ -249,6 +298,8 @@ def main(argv=None):
     p = sub.add_parser("run", help="Confirm + run a goal")
     p.add_argument("goal_id", help="Goal ID")
     p.add_argument("--token", "-t", required=True, help="Confirm token")
+    p.add_argument("--poll-interval", type=float, default=0.5,
+                   help="Seconds between status polls while blocking (default: 0.5)")
 
     # status
     p = sub.add_parser("status", help="Show goal status")

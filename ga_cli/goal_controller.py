@@ -6,6 +6,7 @@ State machine: proposed -> confirmed -> running -> done | failed | budget_exhaus
 Features: confirm-token, max_concurrent_runners budget, max_duration timeout,
           pause/resume, deliverable aggregation, cross-restart recovery.
 """
+import os
 import sqlite3
 import uuid
 import time
@@ -16,6 +17,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
+
+from ga_cli.runner_process import RunnerProcess
+from ga_cli.runner_ipc import FinalAnswer, Error, Exited
 
 log = logging.getLogger(__name__)
 
@@ -161,9 +165,10 @@ class GoalStore:
 
     def _get_conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, 'conn') or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self.db_path)
+            self._local.conn = sqlite3.connect(self.db_path, timeout=30)
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn.execute("PRAGMA busy_timeout=5000")
             self._local.conn.execute("PRAGMA foreign_keys=ON")
         return self._local.conn
 
@@ -328,6 +333,8 @@ class GoalController:
         self.store = store
         self._timers: Dict[str, threading.Timer] = {}
         self._spawn_lock = threading.Lock()
+        self._runners: Dict[str, RunnerProcess] = {}
+        self._ga_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     def propose(self, proposal: str, supervisor: str = "",
                 reason: str = "", max_concurrent_runners: int = 1,
@@ -461,7 +468,15 @@ class GoalController:
         return active < goal.max_concurrent_runners
 
     def spawn_runner(self, goal_id: str, session_id: Optional[str] = None) -> str:
-        """Spawn a runner session for a goal. Returns session_id."""
+        """Spawn a runner session for a goal. Returns session_id.
+
+        Reserves the session id in the store (atomic, under the spawn lock),
+        then — outside the lock — spawns a real runner subprocess (bridge →
+        SDK), waits for its Ready handshake, sends the goal proposal as the
+        initial task, and launches a daemon pump thread that drives the goal
+        state machine to completion as events stream back.
+        """
+        # ── critical section: budget check + reserve session id ──
         with self._spawn_lock:
             if not self.can_spawn_runner(goal_id):
                 goal = self.store.get_goal(goal_id)
@@ -481,7 +496,32 @@ class GoalController:
             goal = self.store.get_goal(goal_id)
             goal.active_runners = self.store.count_active_sessions(goal_id)
             self.store.save_goal(goal)
+            proposal = goal.proposal
 
+        # ── slow path: spawn subprocess + handshake (outside the lock) ──
+        proc: Optional[RunnerProcess] = None
+        try:
+            proc = RunnerProcess(self._ga_path, session_id, cwd=self._ga_path)
+            proc.wait_ready(timeout=RunnerProcess.DEFAULT_READY_TIMEOUT)
+            proc.send_run(proposal)
+        except Exception as e:
+            log.error("runner %s failed to start: %s", session_id, e)
+            self._fail_session(goal_id, session_id, f"spawn failed: {e}")
+            if proc is not None:
+                try:
+                    proc.close()
+                except Exception:
+                    pass
+            raise
+
+        self._runners[session_id] = proc
+        pump = threading.Thread(
+            target=self._pump_runner,
+            args=(goal_id, session_id, proc),
+            name=f"runner-pump-{session_id[:8]}",
+            daemon=True,
+        )
+        pump.start()
         return session_id
 
     def complete_runner(self, goal_id: str, session_id: str,
@@ -499,6 +539,76 @@ class GoalController:
         goal = self.store.get_goal(goal_id)
         goal.active_runners = self.store.count_active_sessions(goal_id)
         self.store.save_goal(goal)
+
+    # ── Runner subprocess pump (tui => controller => runner => SDK) ──
+
+    def _complete_session(self, goal_id: str, session_id: str,
+                          answer: Optional[str]) -> None:
+        """Mark a runner session completed and finalize the goal when idle."""
+        try:
+            self.complete_runner(goal_id, session_id, answer)
+        except Exception:
+            log.exception("complete_runner failed for %s", session_id)
+        if self.store.count_active_sessions(goal_id) == 0:
+            try:
+                self.mark_done(goal_id)
+            except InvalidTransition:
+                pass  # already finalized by a concurrent pump
+
+    def _fail_session(self, goal_id: str, session_id: str,
+                      reason: str) -> None:
+        """Mark a runner session failed and finalize the goal when idle."""
+        try:
+            self.fail_runner(goal_id, session_id, reason)
+        except Exception:
+            log.exception("fail_runner failed for %s", session_id)
+        if self.store.count_active_sessions(goal_id) == 0:
+            try:
+                self.mark_failed(goal_id)
+            except InvalidTransition:
+                pass  # already finalized by a concurrent pump
+
+    def _pump_runner(self, goal_id: str, session_id: str,
+                     proc: RunnerProcess) -> None:
+        """Background thread: consume runner events, drive the goal FSM.
+
+        FinalAnswer        → complete the session (mark goal done when idle)
+        fatal Error        → fail the session (mark goal failed when idle)
+        Exited(code != 0)  → fail the session
+        Exited(code == 0)  → clean exit; stream ends at the None sentinel
+        stream ends w/o FinalAnswer → fail (contract: success always emits one)
+        """
+        got_final = False
+        log.info("pump started: runner=%s goal=%s", session_id, goal_id)
+        try:
+            for ev in proc.iter_events():
+                if isinstance(ev, FinalAnswer):
+                    got_final = True
+                    self._complete_session(goal_id, session_id, ev.text)
+                elif isinstance(ev, Error) and ev.fatal:
+                    self._fail_session(goal_id, session_id,
+                                       f"runner error: {ev.message}")
+                    return
+                elif isinstance(ev, Exited) and ev.code != 0:
+                    self._fail_session(goal_id, session_id,
+                                       f"runner exited code={ev.code}: {ev.reason}")
+                    return
+                # Exited(code==0): clean exit, loop falls to None sentinel
+        except Exception:
+            log.exception("pump crashed for runner %s", session_id)
+            self._fail_session(goal_id, session_id, "pump crashed")
+            return
+        finally:
+            self._runners.pop(session_id, None)
+            try:
+                proc.close()
+            except Exception:
+                pass
+            log.info("pump ended: runner=%s goal=%s", session_id, goal_id)
+        # loop ended via None sentinel without a terminal Error/Exited
+        if not got_final:
+            self._fail_session(goal_id, session_id,
+                               "runner stream ended without FinalAnswer")
 
     # ── Deliverable ──
 

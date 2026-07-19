@@ -188,6 +188,15 @@ def skill_manage(handler, args, response):
     _maybe_reset_on_foreground(name)
     yield f"[Skill Manage] patched {name} (.prev saved)\n"
     handler._pending_briefs.append(_build_skill_brief('patch', name, reason, path, handler.cwd))
+    # R6 (D5(a)):foreground patch 成功 → 重置熔断计数器(兑现 R6 notes 原意)。
+    # background 路径(origin='background_review')的计数器处置由 _apply_op status check
+    # 负责(scored-pass 清零 / scoring-off 累加),此处不染指避免双重处置。
+    try:
+        from plugins.skill_evolution import reset_auto_patch_count, skill_write_origin
+        if skill_write_origin.get() != 'background_review':
+            reset_auto_patch_count(name)
+    except Exception:
+        pass
     return StepOutcome({'status': 'ok', 'action': 'patch', 'name': name, 'path': path}, next_prompt=handler._get_anchor_prompt(skip=idx > 0))
 
 

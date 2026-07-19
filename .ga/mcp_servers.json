@@ -2,7 +2,7 @@
   "mcpServers": {
     "codebase-memory": {
       "transport": "stdio",
-      "command": "D:\\GenericAgent\\temp\\codebase-memory-mcp\\codebase-memory-mcp.exe",
+      "command": "/Users/mac/.local/bin/codebase-memory-mcp",
       "args": [],
       "description": "Code intelligence MCP server - indexes codebases into knowledge graph"
     }

@@ -349,6 +349,12 @@ class MCPServerConnection:
         transport_pair = await self._ctx.__aenter__()
         read_stream, write_stream = transport_pair[0], transport_pair[1]
         self._session = ClientSession(read_stream, write_stream)
+        # Enter the session's async context: this starts the internal
+        # _receive_loop (in ClientSession.__aenter__), which is what
+        # actually reads server responses. Without it, initialize() and
+        # every subsequent call blocks forever on receive(). This also
+        # pairs with the __aexit__ in _shutdown(), preventing leaks.
+        await self._session.__aenter__()
         await self._session.initialize()
         # Discover tools
         await self._refresh_tools()
