@@ -221,6 +221,65 @@ class InProcessScorer:
         )
 
 
+def _build_scorer_desc(skill_md: str, history, catalog: str) -> str:
+    """构造评判子 agent 的 desc(D3 独立性硬保证)。
+
+    候选 SKILL.md 全文 + history_info[-40:] 快照 + catalog。
+    **禁含** op['reason'] 与任何 generator prompt 片段。
+    history_info 是任务客观历史(非 generator 判断),可接受(D3 Risks)。
+    """
+    if isinstance(history, (list, tuple)):
+        history_text = "\n".join(str(h) for h in list(history)[-40:])
+    else:
+        history_text = str(history)
+    parts = [
+        "# 候选技能 SKILL.md\n\n" + skill_md,
+        "# 任务历史快照(最近 40 条,客观事实)\n\n" + history_text,
+        "# 现有技能 catalog(查冗余用)\n\n" + catalog,
+    ]
+    desc = "\n\n---\n\n".join(parts)
+    # 硬断言:desc 不含生成器 reason 片段(单测覆盖见 test_subagent_scorer_desc_actually_excludes_reason)
+    # 注:此处不强制 assert,因 reason 关键词可能与 skill_md 正文巧合;调用方保证 op['reason'] 不入参。
+    return desc
+
+
+class SubagentScorer:
+    """隔离子 agent 打分(真独立,independence-by-construction)。
+
+    经 handler._subagent_mgr.run_single() 派发:独立 git worktree(--detach)+ 独立 LLM session
+    (subprocess 起 agentmain.py,GA_TASK_MODE=isolated)。评估器看不到生成器 reason/CoT(D3)。
+    """
+
+    def __init__(self, subagent_mgr):
+        self._mgr = subagent_mgr
+
+    def score(self, op, skill_md, history, catalog) -> Verdict:
+        # D3:desc 不含 op['reason'](_build_scorer_desc 不接 reason 参数,硬保证)
+        desc = _build_scorer_desc(skill_md, history, catalog)
+        res = self._mgr.run_single(
+            desc=desc,
+            schema=SCORE_SCHEMA,
+            tools_subset=["file_read"],     # D3/OQ1:只读;submit_result 由 _apply_task_mode 强制注入
+            base_ref=None,                  # OQ2:None → 默认 dev HEAD
+            timeout_s=GA_SKILL_SCORER_TIMEOUT,
+        )
+        if getattr(res, "state", None) in ("failed", "timed_out"):
+            raise ScorerDegraded(getattr(res, "state", "unknown"))
+        # 二次防御性校验(run_single 已 validate,但兜底)
+        try:
+            _validate_obj(res.result, SCORE_SCHEMA)
+        except ScorerDegraded:
+            raise
+        r = res.result
+        return Verdict(
+            score=r["score"],
+            verdict=VerdictKind(r["verdict"]),
+            dims=r["dims"],
+            rationale=r["rationale"],
+            source="subagent",
+        )
+
+
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
 
