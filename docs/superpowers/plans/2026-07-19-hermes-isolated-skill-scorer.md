@@ -114,7 +114,7 @@ base-ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
   - `GA_SKILL_SCORER_THRESHOLD = int(os.environ.get("GA_SKILL_SCORER_THRESHOLD", "60"))`
   - `GA_SKILL_SCORER_TIMEOUT = int(os.environ.get("GA_SKILL_SCORER_TIMEOUT", "600"))`
 
-- [ ] **Step 1: 写失败测试(类型可 import + Verdict 默认 source + 阈值默认值)**
+- [x] **Step 1: 写失败测试(类型可 import + Verdict 默认 source + 阈值默认值)**
 
 创建 `tests/test_skill_scoring.py`:
 ```python
@@ -199,12 +199,12 @@ def test_threshold_defaults(monkeypatch):
     assert se.GA_SKILL_SCORER_TIMEOUT == 600
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `pytest tests/test_skill_scoring.py -v`
 Expected: FAIL with `ImportError: cannot import name 'Verdict'` 或 `ModuleNotFoundError`(类型未定义)。
 
-- [ ] **Step 3: 实现 —— 在 `plugins/skill_evolution.py` 顶部追加类型定义**
+- [x] **Step 3: 实现 —— 在 `plugins/skill_evolution.py` 顶部追加类型定义**
 
 在 L24 `import threading` 后追加 import(同段):
 ```python
@@ -281,17 +281,17 @@ SCORE_SCHEMA = {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v`
 Expected: PASS(6 个测试全绿)。
 
-- [ ] **Step 5: 跑既有回归确认不破**
+- [x] **Step 5: 跑既有回归确认不破**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿(新增类型不影响既有路径)。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py

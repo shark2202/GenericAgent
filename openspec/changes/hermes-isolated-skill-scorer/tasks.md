@@ -1,8 +1,8 @@
 ## 1. Scorer 抽象与双实现
 
-- [ ] 1.1 在 `plugins/skill_evolution.py` 定义 `Verdict` dataclass(`score:int`/`verdict:enum`/`dims:dict`/`rationale:str`)与 `Scorer` 接口(`score(op, skill_md, history, catalog) -> Verdict`)
+- [x] 1.1 在 `plugins/skill_evolution.py` 定义 `Verdict` dataclass(`score:int`/`verdict:enum`/`dims:dict`/`rationale:str`)与 `Scorer` 接口(`score(op, skill_md, history, catalog) -> Verdict`)
 - [ ] 1.2 实现 `InProcessScorer`:同进程第二次 LLM 调用(separate messages list + distinct prompt role),输入=候选 SKILL.md + task history + catalog(禁含 `op['reason']`/CoT),解析返回为 `Verdict`
-- [ ] 1.3 定义 `SCORE_SCHEMA`(打分对象 JSON schema:`score`/`verdict`/`dims{reusability,verifiedness,non_redundancy}`/`rationale`)与阈值常量 `GA_SKILL_SCORER_THRESHOLD`(默认 60,env 可覆盖)
+- [x] 1.3 定义 `SCORE_SCHEMA`(打分对象 JSON schema:`score`/`verdict`/`dims{reusability,verifiedness,non_redundancy}`/`rationale`)与阈值常量 `GA_SKILL_SCORER_THRESHOLD`(默认 60,env 可覆盖)
 - [ ] 1.4 实现 `SubagentScorer`:调 `handler._subagent_mgr.run_single(desc=候选SKILL.md+history+catalog, schema=SCORE_SCHEMA, tools_subset=['file_read'], base_ref='HEAD', timeout_s=GA_SKILL_SCORER_TIMEOUT 默认 600)`,把返回对象映射为 `Verdict`
 
 ## 2. 收敛点接线(distill 插打分闸门)
