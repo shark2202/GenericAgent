@@ -29,17 +29,17 @@
 
 ## 4. 契约测试（tests/）
 
-- [ ] 4.1 `test_protocol_transport.py`：握手成功 + 畸形 JSON 不崩（spec 传输 + E2）
-- [ ] 4.2 `test_protocol_capability.py`：能力不匹配优雅退出（spec capability 协商）
-- [ ] 4.3 `test_protocol_single_task.py`：单任务端到端流式（S1）
-- [ ] 4.4 `test_protocol_multi_session.py`：双任务并发不串台（S2）
-- [ ] 4.5 `test_protocol_interrupt.py`：中断运行中任务（S3）
-- [ ] 4.6 `test_protocol_approval.py`：approval 闭环（S4）
-- [ ] 4.7 `test_protocol_mcp_visibility.py`：MCP 可见性查询（S5）
-- [ ] 4.8 `test_protocol_llm_session.py`：切模型 + 恢复会话（S6）
-- [ ] 4.9 `test_protocol_autonomous.py`：autonomous 持续到 budget + 被中断（S7）
-- [ ] 4.10 `test_protocol_slash_forward.py`：slash 转发注入正确 prompt + hive 多会话（S8/S9）
-- [ ] 4.11 `test_protocol_resilience.py`：child 崩溃韧性（E1）+ 未初始化直接 task/start 被拒（E3）
+- [x] 4.1 `test_protocol_transport.py`：握手成功 + 畸形 JSON 不崩（spec 传输 + E2）
+- [x] 4.2 `test_protocol_capability.py`：能力不匹配优雅退出（spec capability 协商）
+- [x] 4.3 `test_protocol_single_task.py`：单任务端到端流式（S1）
+- [x] 4.4 `test_protocol_multi_session.py`：双任务并发不串台（S2）
+- [x] 4.5 `test_protocol_interrupt.py`：中断运行中任务（S3）
+- [x] 4.6 `test_protocol_approval.py`：approval 闭环（S4）
+- [x] 4.7 `test_protocol_mcp_visibility.py`：MCP 可见性查询（S5）
+- [x] 4.8 `test_protocol_llm_session.py`：切模型 + 恢复会话（S6）
+- [x] 4.9 `test_protocol_autonomous.py`：autonomous 持续到 budget + 被中断（S7）
+- [x] 4.10 `test_protocol_slash_forward.py`：slash 转发注入正确 prompt + hive 多会话（S8/S9）
+- [x] 4.11 `test_protocol_resilience.py`：child 崩溃韧性（E1）+ 未初始化直接 task/start 被拒（E3）
 
 ## 5. verify 阶段
 
