@@ -47,3 +47,21 @@
 - [x] 7.1 `AGENTS.md` 登记 `GA_SKILL_SCORER` env gate 与 `GA_SKILL_SCORER_THRESHOLD`/`GA_SKILL_SCORER_TIMEOUT`(若需)
 - [x] 7.2 更新 `hermes/NOTES_v1.5_recommendations.md`:标 R2 已实现(independence-by-construction 落地)+ R6 已修;R1/R3/R5/R7/R8/R9 仍 open
 - [x] 7.3 更新 `HANDOFF.md` 或新增 design 摘要(交接用)
+
+## 8. Final Review (review_mode=standard,全 change 轻量审查)
+
+**整体 verdict**: ready to merge — 可进入 verify 阶段。无 Critical / Important。
+
+**Minor finding(接受,不阻塞 verify)**:
+- M1 `SubagentScorer.score` 冗余 `try/except ScorerDegraded → raise`(捕获即重抛)。可简化为直接 `_validate_obj`。无功能影响,纯冗余。
+- M2 `_score_with_fallback` 防御性 pass-through `source="degraded"` 与 rationale "v1 passthrough" 不一致(宜 `source="disabled"`)。生产不可达(`_scoring_enabled` False 时不调),纯防御。
+- M3 InProcessScorer 自身降级(非 JSON/校验失败)在闸门标 `rejected-by-scorer` Brief,不区分 "scorer 降级" vs "scorer 拒绝"。可观测性 gap,行为正确(op 被拦截)。
+- M4 降级 Brief 用未 strip 的 `op.get("name","?")`,distill rejected 用 stripped name。名字几乎不含空白,无实际影响。
+- M5 `_validate_obj` `isinstance(v,int)` 接受 bool(`bool` 是 `int` 子类),LLM 返 `score:true` 会被当 1。LLM 按指令返 0-100 整数,非实际风险。
+
+**Cannot-verify(env-gated,change 约束已 acknowledged)**:
+1. SubagentScorer 真隔离端到端(6.7 skipif,待 subagents 合并到 dev 后补 TODO)
+2. ga.py `_subagent_mgr` 真实例化(当前 ImportError→None,待 subagents 合并验证 SubagentManager(root=cwd) 签名)
+3. `SubagentManager.run_single` 真实签名(mock `_FakeMgr` 假设参数名,合并时核对)
+
+**接受理由**:5 Minor 均为代码质量/可观测性改进,生产不可达或无实际影响;3 Cannot-verify 为 change 约束已 acknowledged 的 env-gated 路径(subagents 未合并),本 change 落地锚点是 InProcessScorer 路径独立端到端跑(已覆盖)。
