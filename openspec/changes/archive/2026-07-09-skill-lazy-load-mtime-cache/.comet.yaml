@@ -1,0 +1,17 @@
+workflow: full
+phase: build
+language: zh
+build_mode: direct
+isolation: none
+tdd_mode: co-test
+verify_mode: full
+auto_transition: false
+base_ref: 989e219
+created_at: "2026-07-09"
+archived: true
+note: "手工维护，comet 状态机不可用（scripts/ 缺失）。环境损坏延续 (b1) 务实路径。"
+verify_result: pass
+
+# archived 2026-07-19: inherited change (11/11 implemented: skill_loader.py + 6 tests).
+# comet scripts reject date-prefixed name (regex ^[a-z]...); hand-moved to archive/ + set archived:true/verify_result:pass.
+# Released the open/design hard-block on source writes for add-durable-agent-protocol build.

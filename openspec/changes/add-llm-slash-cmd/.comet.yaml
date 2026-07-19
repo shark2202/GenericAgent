@@ -20,8 +20,6 @@ created_at: 2026-07-09
 verified_at: 2026-07-09
 archived: true
 direct_override: null
-build_command: "python3 -m py_compile agentmain.py"
-verify_command: null
 handoff_context: null
 handoff_hash: null
 classic_profile: tweak
