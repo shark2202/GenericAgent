@@ -581,7 +581,7 @@ git commit -m "feat(skill-scoring): add InProcessScorer fallback + helpers (task
 - Consumes: `Verdict`/`VerdictKind`/`SCORE_SCHEMA`/`ScorerDegraded`(Task 1-2)、`handler._subagent_mgr`(类型 `SubagentManager`,有 `.run_single(desc, schema, tools_subset, base_ref, timeout_s) -> WorkerResult`)
 - Produces: `SubagentScorer(subagent_mgr)` 类,`.score(...) -> Verdict`;`_build_scorer_desc(skill_md, history, catalog) -> str`(`desc` 构造,断言不含 `reason`)
 
-- [ ] **Step 1: 写失败测试(mock `run_single` 合规/failed/timed_out + 独立性断言)**
+- [x] **Step 1: 写失败测试(mock `run_single` 合规/failed/timed_out + 独立性断言)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -747,7 +747,7 @@ def test_subagent_scorer_desc_actually_excludes_reason():
 Run: `pytest tests/test_skill_scoring.py -v -k "subagent or build_scorer_desc"`
 Expected: FAIL with `ImportError: cannot import name 'SubagentScorer'`。
 
-- [ ] **Step 3: 实现 `SubagentScorer` + `_build_scorer_desc`**
+- [x] **Step 3: 实现 `SubagentScorer` + `_build_scorer_desc`**
 
 在 `plugins/skill_evolution.py` Task 2 的 `InProcessScorer` 后追加:
 ```python
