@@ -1847,7 +1847,7 @@ git commit -m "test(skill-scoring): ruff clean + full pytest regression (task 6.
   合并后无需改本 change 代码即启用真隔离。
 - [x] R6:_auto_patch_counts 永不复位 bug 已修 —— foreground 修正或 scored-pass
   background patch → `reset_auto_patch_count(name)` 清零(OQ3 决议,反推翻原"不累加")。
-- [ ] R1/R3/R5/R7/R8/R9 仍 open(R3 test-prompts 经验打分 / R5 ratchet 回退 /
+- R1/R3/R5/R7/R8/R9 仍 open(R3 test-prompts 经验打分 / R5 ratchet 回退 /
   R7 死计数器清理 / R8 fitness-log / R9 validate 缺 loadability)—— 另立 change。
 - v2 follow-up:`get_skill_detail` 工具给评判官(查冗余更准,OQ1 决议本 change 用 `file_read` 兜底)。
 ```
