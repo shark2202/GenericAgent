@@ -38,8 +38,8 @@
 - [x] 6.4 单测闸门:`pass`→`_apply_op` 调用;`reject`→不调用且 `_pending_briefs` 有 "rejected-by-scorer";v1 模式(gate off)→ 无打分直接 `_apply_op`
 - [x] 6.5 单测独立性:`SubagentScorer` 构造的 `desc` 不含 `op['reason']`;`tools_subset` 不含执行类工具
 - [x] 6.6 单测 R6:前台 patch 成功 → 计数归零;打分通过的 background patch → 清零(OQ3);打分 off → 原累加;5 次后第 6 次 → 产 Brief 不落盘(熔断仍有效)
-- [ ] 6.7 集成测(deps-complete env,Windows `uv pip install -e ".[ui]"`):monkeypatch 子 agent 产出合规打分 → distill 全链跑通(类比 hermes Step 5b / subagents §7 T1/T3)
-- [ ] 6.8 集成测:打分子 agent 不调 `submit_result`/超时 → distill 降级 inprocess + Brief 记降级
+- [x] 6.7 集成测(deps-complete env,Windows `uv pip install -e ".[ui]"`):monkeypatch 子 agent 产出合规打分 → distill 全链跑通(类比 hermes Step 5b / subagents §7 T1/T3)
+- [x] 6.8 集成测:打分子 agent 不调 `submit_result`/超时 → distill 降级 inprocess + Brief 记降级
 - [ ] 6.9 `ruff check` 新代码 0 违规;`pytest tests/test_skill_evolution*.py tests/test_skill_scoring*.py` 不引入新失败(含既有 64 测试)
 
 ## 7. 文档

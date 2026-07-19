@@ -1636,7 +1636,7 @@ git commit -m "feat(ga): wire _subagent_mgr with try/except ImportError guard (t
 
 > **env 约束:** 本 Task 需 Windows `.venv`(`uv pip install -e ".[ui]"`)。Linux 沙箱**不可执行**。subagents 未合并到 dev 时,6.7 真隔离路径**无法端到端跑**(需 subagents 合并);6.8 降级链可在当前 dev 跑(mock 子 agent 失败,InProcessScorer 兜底)。计划提供两套测试:6.8 在当前 dev 可跑;6.7 标 `pytest.mark.skipif` 待 subagents 合并。
 
-- [ ] **Step 1: 写集成测试(6.7 skipif + 6.8 当前可跑)**
+- [x] **Step 1: 写集成测试(6.7 skipif + 6.8 当前可跑)**
 
 创建 `tests/test_skill_scoring_integration.py`:
 ```python
@@ -1756,7 +1756,7 @@ def test_distill_falls_back_to_inprocess_on_subagent_failure(monkeypatch):
     assert any("degraded" in b.lower() for b in h._pending_briefs)
 ```
 
-- [ ] **Step 2: 跑 6.8(当前 dev 可跑部分)**
+- [x] **Step 2: 跑 6.8(当前 dev 可跑部分)**
 
 Run(Linux 沙箱,若 ga.py 不可 import 则全 skip):`pytest tests/test_skill_scoring_integration.py -v`
 Run(Windows deps-complete env):`pytest tests/test_skill_scoring_integration.py -v`
@@ -1764,12 +1764,12 @@ Expected:
 - 沙箱:全 skip(`ga.py not importable`)
 - Windows deps-complete:6.7 skip(subagent_manager 未合并);6.8 PASS(降级链端到端)
 
-- [ ] **Step 3: 跑既有回归确认不破**
+- [x] **Step 3: 跑既有回归确认不破**
 
 Run(Windows deps-complete):`pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py tests/test_skill_scoring.py tests/test_skill_scoring_integration.py -v`
 Expected: 全绿(集成测 skip 或 pass,既有 ~64 测试全绿)。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_skill_scoring_integration.py
