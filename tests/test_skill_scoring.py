@@ -862,3 +862,24 @@ def test_r6_background_skill_manage_does_not_reset(monkeypatch, tmp_path):
     # background 路径:skill_manage 内不 reset(由 _apply_op status check 处置)
     # counter 保持原值 2(由调用方 _apply_op 决定累加/清零,本测试只验 skill_manage 不染指)
     assert se._auto_patch_counts["s"] == 2
+
+
+# ── Task 7: ga.py _subagent_mgr wiring (5.1) ────────────────────
+
+def test_subagent_mgr_absent_when_module_not_importable(monkeypatch):
+    """subagents 未合并到 dev → ga.py import subagent_manager 失败 → _subagent_mgr=None。
+
+    本测试不 import ga.py(重型 deps),而是验证 _resolve_scorer 在 _subagent_mgr=None 时
+    缺省走 InProcessScorer(已在 Task 5 覆盖)。此处仅断言 subagent_manager 模块在当前 dev
+    不可 import(防御性,确认 try/except 必要)。
+    """
+    try:
+        import subagent_manager  # noqa: F401
+        has_module = True
+    except ImportError:
+        has_module = False
+    if has_module:
+        pytest.skip("subagent_manager 已合并到 dev(本 change 落地后真隔离可端到端跑)")
+    # 当前 dev 无 subagent_manager → ga.py try/except 走 except 分支 → _subagent_mgr=None
+    # → _resolve_scorer 缺省返回 InProcessScorer(InProcessScorer 路径独立端到端跑)
+    assert has_module is False

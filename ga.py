@@ -35,6 +35,15 @@ class GenericAgentHandler(BaseHandler):
         self._done_hooks = []
         self._pending_briefs = []        # self-evolution: queued skill-distillation briefs (flushed at turn%10 / task end)
         self._evolution_signal = None    # self-evolution: accumulated negative signal (errors/retries/corrections) for v1.5 trigger
+        # subagent manager (first-class subagents, add-first-class-subagents):
+        # try/except 防御 —— subagents 未合并到 dev 时 ImportError, _subagent_mgr=None,
+        # skill-scoring gate 缺省走 InProcessScorer(本 change 可独立落地)。
+        # subagents 合并后无需改本行即启用 SubagentScorer 真隔离。
+        try:
+            from subagent_manager import SubagentManager
+            self._subagent_mgr = SubagentManager(root=self.cwd)
+        except ImportError:
+            self._subagent_mgr = None
         self.print = safe_print
 
     def _get_abs_path(self, path):
