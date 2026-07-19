@@ -265,13 +265,22 @@ class BridgeCore:
             self.send_error("unknown_task", f"no running task {task_id!r}",
                             original_id=msg.get("id"))
             return
-        ctx.interrupted = True
+        # Set ctx.interrupted ONLY AFTER abort() succeeds (I-1 fix). If abort
+        # raises, the except branch emits interrupt_failed and returns; leaving
+        # the flag True would make drain_display_queue mislabel the task's
+        # natural done as reason="interrupted", contradicting the
+        # interrupt_failed error the client already received. Moving the set
+        # after the try (rather than rolling back in except) is safer: a
+        # partially-applied abort (stop_sig set, handler.code_stop_signal
+        # append raising) leaves the flag False, so drain reflects the task's
+        # true outcome (completed/error) instead of a half-applied interrupt.
         try:
             ctx.ga.abort()
         except Exception as e:
             self.send_error("interrupt_failed", f"{type(e).__name__}: {e}",
                             original_id=msg.get("id"))
             return
+        ctx.interrupted = True
         self.send({"id": msg["id"], "type": "task/ack", "version": VERSION,
                    "task_id": task_id, "status": "interrupting"})
 

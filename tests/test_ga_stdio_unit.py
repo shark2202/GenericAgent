@@ -537,6 +537,23 @@ class _FakeGAWithAbort:
         pass
 
 
+class _FakeGAWithFailingAbort:
+    """Stand-in GA whose abort() raises — proves handle_task_interrupt must
+    NOT leave ctx.interrupted=True when abort fails (I-1 fix). If the flag
+    were set before the try and never rolled back, drain_display_queue would
+    later emit task/done{reason:"interrupted"} for a task that actually ran
+    to completion, contradicting the interrupt_failed error already sent.
+    """
+    def __init__(self, exc=None):
+        self.aborted = False
+        self._exc = exc or RuntimeError("abort boom")
+    def abort(self):
+        self.aborted = True  # simulate partial work before the raise
+        raise self._exc
+    def shutdown(self):
+        pass
+
+
 def test_handle_task_interrupt_calls_abort_and_sets_flag():
     core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
     ga = _FakeGAWithAbort()
@@ -588,3 +605,81 @@ def test_dispatch_routes_task_interrupt_after_ready():
                    "version": "1", "task_id": "t1"})
     assert routed == [{"id": 42, "type": "task/interrupt",
                        "version": "1", "task_id": "t1"}]
+
+
+# ---- Task 4 I-1 fix: abort failure must not leave ctx.interrupted=True ----
+#
+# reviewer I-1: ctx.interrupted=True was set BEFORE the try (ga_stdio.py:268),
+# so if ctx.ga.abort() raised, the except branch sent error{interrupt_failed}
+# and returned WITHOUT rolling back the flag. The drain worker would then
+# read ctx.interrupted=True on the task's natural done and emit
+# task/done{reason:"interrupted"}, contradicting the interrupt_failed error
+# the client already received. Fix: move the flag set to AFTER abort() succee
+# so abort failure leaves the flag at its default False (drain then emits
+# completed/error per the task's true outcome).
+
+def test_handle_task_interrupt_abort_failure_leaves_flag_false():
+    """abort() raising must NOT leave ctx.interrupted=True (I-1).
+
+    RED on the pre-fix code: the flag is set before the try and never rolled
+    back, so this assertion fails (ctx.interrupted is True).
+    """
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithFailingAbort()
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id="t7", thread=None)
+    sent = []
+    core.send = lambda m: sent.append(m)
+    with core._pool_lock:
+        core.pool["t7"] = ctx
+        core.ga_to_task[id(ga)] = "t7"
+    core.handle_task_interrupt({"id": 100, "type": "task/interrupt",
+                                "task_id": "t7"})
+    # the flag must remain at its default — abort failed, the task was NOT
+    # interrupted and may yet run to a natural completed/error outcome.
+    assert ctx.interrupted is False, (
+        "abort failure must not leave ctx.interrupted=True; drain would then "
+        "mislabel a natural done as reason=interrupted, contradicting the "
+        "interrupt_failed error already sent")
+
+
+def test_handle_task_interrupt_abort_failure_emits_interrupt_failed_error():
+    """abort() raising must emit error{code:interrupt_failed} (I-1)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithFailingAbort(exc=ValueError("vboom"))
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id="t9", thread=None)
+    sent = []
+    core.send = lambda m: sent.append(m)
+    with core._pool_lock:
+        core.pool["t9"] = ctx
+        core.ga_to_task[id(ga)] = "t9"
+    core.handle_task_interrupt({"id": 200, "type": "task/interrupt",
+                                "task_id": "t9"})
+    assert sent, "expected an error frame"
+    err = sent[-1]
+    assert err["type"] == "error"
+    assert err["code"] == "interrupt_failed"
+    assert err["original_id"] == 200
+    assert "ValueError" in err.get("message", "") or "vboom" in err.get("message", "")
+
+
+def test_handle_task_interrupt_abort_success_sets_flag_and_acks():
+    """abort() succeeding must set ctx.interrupted=True and emit task/ack
+    (I-1 guard: the fix must not break the happy path — flag set AFTER the
+    try, before the ack)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithAbort()
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id="t3", thread=None)
+    sent = []
+    core.send = lambda m: sent.append(m)
+    with core._pool_lock:
+        core.pool["t3"] = ctx
+        core.ga_to_task[id(ga)] = "t3"
+    core.handle_task_interrupt({"id": 300, "type": "task/interrupt",
+                                "task_id": "t3"})
+    assert ga.aborted is True
+    assert ctx.interrupted is True
+    acks = [m for m in sent if m["type"] == "task/ack"]
+    assert len(acks) == 1
+    assert acks[0]["task_id"] == "t3"
+    assert acks[0]["status"] == "interrupting"
+    assert acks[0]["id"] == 300
