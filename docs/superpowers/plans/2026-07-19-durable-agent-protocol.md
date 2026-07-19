@@ -98,7 +98,7 @@ ga_stdio.py
 - Consumes: comet CLI（`comet-state` / `comet-guard` / `comet-handoff` 等脚本，经 `comet-env.mjs` 定位）
 - Produces: `add-selfextract-installer` 的 `.comet.yaml.phase` 离开 open（到 design 或 build 均可解除阻塞）
 
-- [ ] **Step 1: 确认 add-selfextract-installer 当前状态**
+- [x] **Step 1: 确认 add-selfextract-installer 当前状态**
 
 ```bash
 cat openspec/changes/add-selfextract-installer/.comet.yaml
@@ -107,11 +107,11 @@ ls openspec/changes/add-selfextract-installer/
 
 Expected: `phase: open`，`workflow: full`。三件套可能部分缺失（open 阶段正在补）。
 
-- [ ] **Step 2: 按 comet 流程推进该 change——补齐 open 阶段三件套**
+- [x] **Step 2: 按 comet 流程推进该 change——补齐 open 阶段三件套**
 
 若三件套缺失，按 `comet-open` skill 流程补齐 proposal.md / design.md / tasks.md。这不是本 change 的工作，但必须做完。**用户确认点**：open 阶段需求澄清完成确认 + artifact 评审确认——必须暂停等用户明确选择，不得自动跳过。
 
-- [ ] **Step 3: open guard 通过**
+- [x] **Step 3: open guard 通过**
 
 ```bash
 comet-guard add-selfextract-installer open --apply
@@ -119,7 +119,7 @@ comet-guard add-selfextract-installer open --apply
 
 Expected: `ALL CHECKS PASSED`。
 
-- [ ] **Step 4: 阶段推进——进入 design 或直达 build**
+- [x] **Step 4: 阶段推进——进入 design 或直达 build**
 
 ```bash
 comet-state next add-selfextract-installer
@@ -127,7 +127,7 @@ comet-state next add-selfextract-installer
 
 按输出：`NEXT: auto` 加载对应 skill（design 走 `/comet-design`）；`NEXT: manual` 按 HINT 手动推进。**目标：phase 离开 open**（到 design 或 build 都可解除本 change 的源码写阻塞）。若进 design，design guard 通过后 `comet-state next` 再推进到 build。
 
-- [ ] **Step 5: 验证阻塞解除**
+- [x] **Step 5: 验证阻塞解除**
 
 ```bash
 grep '^phase:' openspec/changes/add-selfextract-installer/.comet.yaml
@@ -135,7 +135,7 @@ grep '^phase:' openspec/changes/add-selfextract-installer/.comet.yaml
 
 Expected: `phase: design` 或 `phase: build`（不再是 `open`）。此时本 change 可进入 build 阶段写源码。
 
-- [ ] **Step 6: 勾选 + 提交（本 change 的 tasks.md §1.1）**
+- [x] **Step 6: 勾选 + 提交（本 change 的 tasks.md §1.1）**
 
 勾选 `openspec/changes/add-durable-agent-protocol/tasks.md` 第 1.1 行。提交：
 
@@ -150,7 +150,7 @@ git commit -m "chore(add-durable-agent-protocol): §1.1 unblock — add-selfextr
 
 **类型：** 核实（非源码）。**阻塞性：** 无——已预核实。
 
-- [ ] **Step 1: 确认无 .comet.yaml（非 comet 托管）**
+- [x] **Step 1: 确认无 .comet.yaml（非 comet 托管）**
 
 ```bash
 ls openspec/changes/hermes-isolated-skill-scorer/.comet.yaml 2>/dev/null && echo EXISTS || echo NO-COMET
@@ -158,7 +158,7 @@ ls openspec/changes/hermes-isolated-skill-scorer/.comet.yaml 2>/dev/null && echo
 
 Expected: `NO-COMET`（该 change 非 comet 托管，不构成源码写阻塞）。
 
-- [ ] **Step 2: 勾选 + 提交（本 change 的 tasks.md §1.2）**
+- [x] **Step 2: 勾选 + 提交（本 change 的 tasks.md §1.2）**
 
 勾选 tasks.md 第 1.2 行。提交：
 
@@ -855,7 +855,7 @@ git commit -m "feat(ga_stdio): hook routing — tool_before→tool/call, turn_af
 - Consumes: `GenericAgent.abort()`（`agentmain.py:137-141`）、`TaskCtx.interrupted` 标志。
 - Produces: `BridgeCore.handle_task_interrupt`。
 
-- [ ] **Step 1: 写失败测试——interrupt 设标志 + abort**
+- [x] **Step 1: 写失败测试——interrupt 设标志 + abort**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -890,7 +890,7 @@ def test_handle_task_interrupt_unknown_task_id_emits_error():
     assert sent[-1]["code"] == "unknown_task"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -898,7 +898,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `AttributeError: 'BridgeCore' object has no attribute 'handle_task_interrupt'`。
 
-- [ ] **Step 3: 实现 handle_task_interrupt**
+- [x] **Step 3: 实现 handle_task_interrupt**
 
 在 `BridgeCore` 内加方法：
 
@@ -933,7 +933,7 @@ Expected: FAIL — `AttributeError: 'BridgeCore' object has no attribute 'handle
 
 （`drain_display_queue` 在 Task 2 已用 `ctx.interrupted` 决定 `reason`——interrupted 标志设后，下一次 done 走 `reason="interrupted"` 分支。）
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -941,7 +941,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（14 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.5。
 
@@ -970,7 +970,7 @@ git commit -m "feat(ga_stdio): task/interrupt→abort→task/done{reason:interru
 - Consumes: `ga_utils.ask_user`（patch 目标）、`threading.Event`。
 - Produces: `BridgeCore.handle_approval_response`、`BridgeCore._pending_approvals`（`{(task_id, tool_id): (Event, box)}`）。
 
-- [ ] **Step 1: 写失败测试——approval request/response 同步**
+- [x] **Step 1: 写失败测试——approval request/response 同步**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1029,7 +1029,7 @@ def test_approval_response_unknown_slot_emits_stale_approval():
     assert sent[-1]["code"] == "stale_approval"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1037,7 +1037,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `_on_approval_request` 是 stub（Task 3 占位），`_patch_ask_user` 不存在。
 
-- [ ] **Step 3: 实现 approval 拦截 + patch ask_user + drain 续跑**
+- [x] **Step 3: 实现 approval 拦截 + patch ask_user + drain 续跑**
 
 在 `BridgeCore.__init__` 加（`self._hooks_registered = False` 后）：
 
@@ -1169,7 +1169,7 @@ Expected: FAIL — `_on_approval_request` 是 stub（Task 3 占位），`_patch_
             self.handle_approval_response(msg)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1177,7 +1177,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（16 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.7。
 
@@ -1200,7 +1200,7 @@ git commit -m "feat(ga_stdio): approval loop — patch ask_user, block agent thr
 - Consumes: `threading.Semaphore`、`GenericAgent.list_llms`（agent_info.llm_count）、`MCPClientManager.get_instance`（agent_info.mcp_connected）。
 - Produces: `BridgeCore.semaphore`、`BridgeCore._queued`（FIFO）、`handle_task_start` 的 `status:"queued"` 路径。
 
-- [ ] **Step 1: 写失败测试——超并发上限排队**
+- [x] **Step 1: 写失败测试——超并发上限排队**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1239,7 +1239,7 @@ def test_release_wakes_queued_task():
     assert len(running) >= 2
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1247,7 +1247,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `BridgeCore.__init__` 不接受 `max_concurrency`；无 `_queued`。
 
-- [ ] **Step 3: 实现有界并发池**
+- [x] **Step 3: 实现有界并发池**
 
 改 `BridgeCore.__init__` 签名与体（加 `max_concurrency` 参数 + semaphore + _queued；保留 Task 2/3/5 已加的字段）：
 
@@ -1386,7 +1386,7 @@ Expected: FAIL — `BridgeCore.__init__` 不接受 `max_concurrency`；无 `_que
                                   "llm_count": llm_count}})
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1394,7 +1394,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（18 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.4。
 
@@ -1417,7 +1417,7 @@ git commit -m "feat(ga_stdio): per-task GA pool + bounded concurrency (max 4, en
 - Consumes: `reflect/goal_mode.py` 的 `CONTINUATION_PROMPT` 模式（复刻，不 import）、`time.time()`、`GenericAgent.put_task`。
 - Produces: `BridgeCore.run_autonomous(ctx)`、`ga_stdio.CONTINUATION_PROMPT`、`ga_stdio.BUDGET_LIMIT_PROMPT`。
 
-- [ ] **Step 1: 写失败测试——budget 校验 + 自续循环**
+- [x] **Step 1: 写失败测试——budget 校验 + 自续循环**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1466,7 +1466,7 @@ def test_run_autonomous_emits_budget_done_when_seconds_exhausted():
     assert reasons and any(r["reason"] == "budget" for r in reasons)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1474,7 +1474,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `run_autonomous` 仍 raise NotImplementedError（Task 2 占位）；`_validate_budget` 在 Task 6 已实现，本步 `run_autonomous` 是关键。
 
-- [ ] **Step 3: 实现 autonomous 自续循环**
+- [x] **Step 3: 实现 autonomous 自续循环**
 
 在 `ga_stdio.py` 模块级（`SERVER_CAPABILITIES` 后）加 prompt 模板（复刻 `reflect/goal_mode.py:26-69` 模式，不从 reflect import）：
 
@@ -1576,7 +1576,7 @@ BUDGET_LIMIT_PROMPT = """[Autonomous — 预算耗尽，收口]
         self.send(done)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1584,7 +1584,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（20 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.6。
 
@@ -1607,7 +1607,7 @@ git commit -m "feat(ga_stdio): autonomous continuation loop + budget{seconds,tur
 - Consumes: `frontends.slash_cmds.prompt_for(cmd, args_text)`（`frontends/slash_cmds.py:597-614`）、`GenericAgent.put_task`（raw 转发 `/llm`/`/session.*`/`/resume`）、`TaskCtx`。
 - Produces: `BridgeCore.handle_slash_cmd`。
 
-- [ ] **Step 1: 写失败测试——slash 三路径**
+- [x] **Step 1: 写失败测试——slash 三路径**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1654,7 +1654,7 @@ def test_slash_unsupported_command_emits_error():
     assert sent[-1]["code"] == "slash_unsupported"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1662,7 +1662,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `BridgeCore` 无 `handle_slash_cmd`。
 
-- [ ] **Step 3: 实现 slash 转发**
+- [x] **Step 3: 实现 slash 转发**
 
 在 `ga_stdio.py` 顶部加注入命令集合（与 `frontends/slash_cmds.py:605-612` 的 table 一致）：
 
@@ -1738,7 +1738,7 @@ _STATE_SLASH_CMDS = {"/llm", "/resume"}  # /session.* handled by prefix match
             self.handle_slash_cmd(msg)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1746,7 +1746,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（23 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.10。
 
@@ -1769,7 +1769,7 @@ git commit -m "feat(ga_stdio): slash/cmd forward — injection via prompt_for + 
 - Consumes: `GenericAgent.list_llms()` / `next_llm(n)` / `llmclient.backend.history`（`agentmain.py:117-135`）。
 - Produces: `BridgeCore.handle_llm_list` / `handle_llm_select` / `handle_session_resume`。
 
-- [ ] **Step 1: 写失败测试——llm list/select + session resume**
+- [x] **Step 1: 写失败测试——llm list/select + session resume**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1830,7 +1830,7 @@ def test_session_resume_restores_history():
     assert ga.llmclient.backend.history == [{"role": "user", "content": "hi"}]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1838,7 +1838,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `BridgeCore` 无 `handle_llm_list` 等。
 
-- [ ] **Step 3: 实现 llm/session 桥接**
+- [x] **Step 3: 实现 llm/session 桥接**
 
 在 `BridgeCore` 内加方法（llm/list/select 和 session/resume 操作一个**已存在** task 的 GA；v1 要求带 task_id，作用域于该 task 的 GA）：
 
@@ -1903,7 +1903,7 @@ Expected: FAIL — `BridgeCore` 无 `handle_llm_list` 等。
             self.handle_session_resume(msg)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1911,7 +1911,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（26 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.9。
 
@@ -1934,7 +1934,7 @@ git commit -m "feat(ga_stdio): llm/list + llm/select + session/resume bridging (
 - Consumes: `MCPClientManager.get_instance()` + `registry.get_server_names()` + `registry._tools`（`mcp_client.py:203,217,235,582-604`）。
 - Produces: `BridgeCore.handle_mcp_list`。
 
-- [ ] **Step 1: 写失败测试——mcp/list 结构化输出**
+- [x] **Step 1: 写失败测试——mcp/list 结构化输出**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -1978,7 +1978,7 @@ def test_mcp_list_no_manager_emits_empty_servers():
     assert m["servers"] == []
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -1986,7 +1986,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `BridgeCore` 无 `handle_mcp_list`。
 
-- [ ] **Step 3: 实现 mcp/list**
+- [x] **Step 3: 实现 mcp/list**
 
 在 `BridgeCore` 内加方法：
 
@@ -2021,7 +2021,7 @@ Expected: FAIL — `BridgeCore` 无 `handle_mcp_list`。
             self.handle_mcp_list(msg)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过 + 全套回归**
+- [x] **Step 4: 跑单元测试确认通过 + 全套回归**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -2035,7 +2035,7 @@ cd D:/GenericAgent && python -m pytest -x -q
 
 Expected: 现有 199 pytest + 新 28 单元测试全绿，无回归。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.8。
 
@@ -2074,7 +2074,7 @@ git commit -m "feat(ga_stdio): mcp/list structured visibility via MCPClientManag
 - **超时**：每个 readline 用超时（reader 线程 + join）——LLM 响应慢，但协议结构要快。
 - **环境**：测试需要至少一个可用 LLM（`mykey.py` 配置）。CI 无 LLM 时跳过——用 `needs_llm` 守卫；纯协议结构测试（§4.1/§4.2/§4.7/§4.11 E3/E2）不需要 LLM，不守卫。
 
-- [ ] **Step 1: 写共享 harness**
+- [x] **Step 1: 写共享 harness**
 
 `tests/_protocol_helpers.py`：
 
@@ -2173,7 +2173,7 @@ def initialize(bp, caps=None):
     return msg
 ```
 
-- [ ] **Step 2: 写 §4.1 transport + E2**
+- [x] **Step 2: 写 §4.1 transport + E2**
 
 `tests/test_protocol_transport.py`：
 
@@ -2208,7 +2208,7 @@ def test_malformed_json_emits_bad_json_error_and_keeps_running():
         assert m is not None and m["type"] == "mcp/list"
 ```
 
-- [ ] **Step 3: 写 §4.2 capability**
+- [x] **Step 3: 写 §4.2 capability**
 
 `tests/test_protocol_capability.py`：
 
@@ -2229,7 +2229,7 @@ def test_unsupported_capability_emits_capability_unsupported():
         assert "nonexistent-cap" in msg["message"]
 ```
 
-- [ ] **Step 4: 写 §4.3 single_task（S1）**
+- [x] **Step 4: 写 §4.3 single_task（S1）**
 
 `tests/test_protocol_single_task.py`：
 
@@ -2260,7 +2260,7 @@ def test_single_task_emits_ack_delta_then_done_completed():
         assert len(deltas) >= 1
 ```
 
-- [ ] **Step 5: 写 §4.4 multi_session（S2）**
+- [x] **Step 5: 写 §4.4 multi_session（S2）**
 
 `tests/test_protocol_multi_session.py`：
 
@@ -2293,7 +2293,7 @@ def test_two_concurrent_tasks_have_distinct_ids_and_no_cross_talk():
         assert delta_tids.issubset(tids)
 ```
 
-- [ ] **Step 6: 写 §4.5 interrupt（S3）**
+- [x] **Step 6: 写 §4.5 interrupt（S3）**
 
 `tests/test_protocol_interrupt.py`：
 
@@ -2323,7 +2323,7 @@ def test_interrupt_running_task_yields_interrupted_done():
         assert dones[-1]["reason"] == "interrupted"
 ```
 
-- [ ] **Step 7: 写 §4.6 approval（S4）**
+- [x] **Step 7: 写 §4.6 approval（S4）**
 
 `tests/test_protocol_approval.py`：
 
@@ -2360,7 +2360,7 @@ def test_approval_request_then_response_continues_task():
         assert dones[-1]["reason"] in ("completed", "error")
 ```
 
-- [ ] **Step 8: 写 §4.7 mcp_visibility（S5）**
+- [x] **Step 8: 写 §4.7 mcp_visibility（S5）**
 
 `tests/test_protocol_mcp_visibility.py`：
 
@@ -2384,7 +2384,7 @@ def test_mcp_list_returns_servers_array_structure():
                 assert "name" in t
 ```
 
-- [ ] **Step 9: 写 §4.8 llm_session（S6）**
+- [x] **Step 9: 写 §4.8 llm_session（S6）**
 
 `tests/test_protocol_llm_session.py`：
 
@@ -2420,7 +2420,7 @@ def test_llm_list_and_select_then_session_resume():
         assert s["type"] == "session/ack"
 ```
 
-- [ ] **Step 10: 写 §4.9 autonomous（S7）**
+- [x] **Step 10: 写 §4.9 autonomous（S7）**
 
 `tests/test_protocol_autonomous.py`：
 
@@ -2463,7 +2463,7 @@ def test_autonomous_interrupt_yields_interrupted_done():
         assert dones[-1]["reason"] == "interrupted"
 ```
 
-- [ ] **Step 11: 写 §4.10 slash_forward（S8/S9）**
+- [x] **Step 11: 写 §4.10 slash_forward（S8/S9）**
 
 `tests/test_protocol_slash_forward.py`：
 
@@ -2498,7 +2498,7 @@ def test_goal_injection_returns_slash_result_with_task_id():
         assert any(x["type"] == "task/done" for x in done)
 ```
 
-- [ ] **Step 12: 写 §4.11 resilience（E1 + E3）**
+- [x] **Step 12: 写 §4.11 resilience（E1 + E3）**
 
 `tests/test_protocol_resilience.py`：
 
@@ -2528,7 +2528,7 @@ def test_child_crash_surfaces_as_stdout_eof_no_hang():
         assert m is None
 ```
 
-- [ ] **Step 13: 跑全部 wire 测试**
+- [x] **Step 13: 跑全部 wire 测试**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_protocol_*.py -v
@@ -2536,7 +2536,7 @@ cd D:/GenericAgent && python -m pytest tests/test_protocol_*.py -v
 
 Expected: 不需要 LLM 的（§4.1 transport / §4.2 capability / §4.7 mcp / §4.11 resilience / §4.10 scheduler）PASS；需要 LLM 的（§4.3-4.6, §4.8-4.10 含 goal 注入）在有 LLM 环境时 PASS，无 LLM 时 skip。
 
-- [ ] **Step 14: 全套回归**
+- [x] **Step 14: 全套回归**
 
 ```bash
 cd D:/GenericAgent && python -m pytest -x -q
@@ -2544,7 +2544,7 @@ cd D:/GenericAgent && python -m pytest -x -q
 
 Expected: 现有 199 + 新单元 28 + 新 wire 测试（按 LLM 可用性）全绿，无回归。
 
-- [ ] **Step 15: 勾选 + 提交**
+- [x] **Step 15: 勾选 + 提交**
 
 勾选 tasks.md §4.1-4.11 全部。
 

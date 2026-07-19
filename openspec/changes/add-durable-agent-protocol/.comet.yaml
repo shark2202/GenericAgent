@@ -8,7 +8,7 @@ subagent_dispatch: confirmed
 tdd_mode: tdd
 review_mode: thorough
 isolation: worktree
-verify_mode: null
+verify_mode: full
 auto_transition: true
 base_ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 design_doc: docs/superpowers/specs/2026-07-19-durable-agent-protocol-design.md
@@ -24,4 +24,4 @@ handoff_context: openspec/changes/add-durable-agent-protocol/.comet/handoff/desi
 handoff_hash: f06b8d3c39b7b4acb7b7ea8cde87f2f215f744366d10cfc32279f52c30d7127b
 classic_profile: full
 classic_migration: 1
-run_id: 4a43bec2-4e53-4600-9ab8-7a345d604e52
+run_id: f4dcf882-4671-4725-a0b2-5264c97d1046

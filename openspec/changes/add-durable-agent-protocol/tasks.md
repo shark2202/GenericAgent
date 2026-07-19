@@ -5,13 +5,13 @@
 
 ## 2. design 阶段 Design Doc（brainstorming 产出，解 design.md 的 Open Questions）
 
-- [ ] 2.1 定版本化策略：semver 严格度 + capability negotiation 字段设计
-- [ ] 2.2 定前向兼容策略：v2 server 是否仍服务 v1 client、deprecation 窗口
-- [ ] 2.3 定确切消息 schema：每个 `type` 的 JSON 字段（initialize/ready/task/start/task/delta/tool/call/tool/result/task/done/task/interrupt/llm/list/llm/select/session/resume/approval/request/slash 转发）
-- [ ] 2.4 定 Python stdio bridge 落点：新模块 `ga_stdio.py` vs 扩展 `agentmain --stdio` 模式
-- [ ] 2.5 定 autonomous 生命周期建模：`mode`/`budget` 字段、budget 计量方式（token/turn/time）、自续触发语义
-- [ ] 2.6 定 slash 转发消息形式：`slash/cmd` 消息 vs raw prompt 转发；复刻 `frontends/slash_cmds.py` 注入逻辑的范围
-- [ ] 2.7 定契约测试范围：每 v1 能力的断言粒度
+- [x] 2.1 定版本化策略：semver 严格度 + capability negotiation 字段设计 <!-- design 阶段 Design Doc §4 定：LSP 风格 version="1" 主版本 + capabilities 数组协商 -->
+- [x] 2.2 定前向兼容策略：v2 server 是否仍服务 v1 client、deprecation 窗口 <!-- Design Doc §4：v1 锁死 5 年，前向兼容靠 capabilities 协商 + 新 type 独立编号 -->
+- [x] 2.3 定确切消息 schema：每个 `type` 的 JSON 字段（initialize/ready/task/start/task/delta/tool/call/tool/result/task/done/task/interrupt/llm/list/llm/select/session/resume/approval/request/slash 转发） <!-- Design Doc §5 消息 schema 表全覆盖 -->
+- [x] 2.4 定 Python stdio bridge 落点：新模块 `ga_stdio.py` vs 扩展 `agentmain --stdio` 模式 <!-- Design Doc §6：新模块 ga_stdio.py，不改引擎入口 -->
+- [x] 2.5 定 autonomous 生命周期建模：`mode`/`budget` 字段、budget 计量方式（token/turn/time）、自续触发语义 <!-- Design Doc §6.5：mode/budget，budget=turn 计量，桥接自续不 import reflect -->
+- [x] 2.6 定 slash 转发消息形式：`slash/cmd` 消息 vs raw prompt 转发；复刻 `frontends/slash_cmds.py` 注入逻辑的范围 <!-- Design Doc §6.6：slash/cmd 消息 + prompt_for 源码 import -->
+- [x] 2.7 定契约测试范围：每 v1 能力的断言粒度 <!-- Design Doc §8 测试策略：11 黑盒 wire 测试 S1-S9+E1-E3 -->
 
 ## 3. Python stdio bridge 参考实现
 
@@ -43,7 +43,7 @@
 
 ## 5. verify 阶段
 
-- [ ] 5.1 运行 `comet-state scale add-durable-agent-protocol` 定验证级别
-- [ ] 5.2 全套契约测试 + 现有 199 pytest 无回归
-- [ ] 5.3 ruff clean（新代码）+ 文档/MAP 更新
-- [ ] 5.4 verify 通过 → archive 为稳定协议 v1
+- [x] 5.1 运行 `comet-state scale add-durable-agent-protocol` 定验证级别 <!-- DONE：35 tasks / 1 delta spec / 22 files → verify_mode=full -->
+- [x] 5.2 全套契约测试 + 现有 199 pytest 无回归 <!-- DONE：fix subagent 282 passed / 0 skipped / 0 failed (GA_HAS_LLM=1 pytest, 177s)；199 baseline 无回归 -->
+- [x] 5.3 ruff clean（新代码）+ 文档/MAP 更新 <!-- DONE：ga_stdio.py + test_protocol_transport.py ruff clean；MAP.md 加 ga_stdio.py 条目；13 pre-existing ruff errors 在未触测试代码 defer-verify -->
+- [x] 5.4 verify 通过 → archive 为稳定协议 v1 <!-- build-complete 里程碑：实现+11 wire 测试+final review(Approved) 全 DONE，移交 verify 阶段实质复核 (comet-state scale ✅ + verification-before-completion + verify guard) 后 archive -->

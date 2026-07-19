@@ -1,6 +1,6 @@
 # GenericAgent 项目地图 (MAP)
 
-> 最后更新: 2026-07-17
+> 最后更新: 2026-07-19
 
 ---
 
@@ -38,6 +38,7 @@ GenericAgent/
 ├── TMWebDriver.py         ← 浏览器：CDP 代理控制
 ├── skill_loader.py        ← 技能发现：get_skill_catalog() + MCP 工具拼接
 ├── mcp_client.py          ← MCP Client：MCPClientManager 单例 (stdio/SSE)
+├── ga_stdio.py            ← 耐久 agent 协议 v1 stdio bridge (python -m ga_stdio)：BridgeCore，逐行 JSON-RPC(id/type/version)，不改引擎内部仅桥接
 ├── ga.cmd                 ← 快捷启动 (仅 Windows)
 ├── hub.pyw                ← 服务管理器 (tkinter)
 ├── launch.pyw             ← 桌面 GUI (pywebview+Streamlit)
