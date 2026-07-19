@@ -40,7 +40,7 @@
 - [x] 6.6 单测 R6:前台 patch 成功 → 计数归零;打分通过的 background patch → 清零(OQ3);打分 off → 原累加;5 次后第 6 次 → 产 Brief 不落盘(熔断仍有效)
 - [x] 6.7 集成测(deps-complete env,Windows `uv pip install -e ".[ui]"`):monkeypatch 子 agent 产出合规打分 → distill 全链跑通(类比 hermes Step 5b / subagents §7 T1/T3)
 - [x] 6.8 集成测:打分子 agent 不调 `submit_result`/超时 → distill 降级 inprocess + Brief 记降级
-- [ ] 6.9 `ruff check` 新代码 0 违规;`pytest tests/test_skill_evolution*.py tests/test_skill_scoring*.py` 不引入新失败(含既有 64 测试)
+- [x] 6.9 `ruff check` 新代码 0 违规;`pytest tests/test_skill_evolution*.py tests/test_skill_scoring*.py` 不引入新失败(含既有 64 测试)
 
 ## 7. 文档
 

@@ -1785,26 +1785,26 @@ git commit -m "test(skill-scoring): integration e2e for distill full chain + fal
 **Files:**
 - 无代码改动,仅验证
 
-- [ ] **Step 1: ruff check 新代码(Anywhere)**
+- [x] **Step 1: ruff check 新代码(Anywhere)**
 
 Run: `ruff check plugins/skill_evolution.py tests/test_skill_scoring.py tests/test_skill_scoring_integration.py`
 Expected: 0 违规。**若有违规**:据 ruff 提示修(常见:未用 import / 行过长 / E402 import 位置)。修后重跑。
 
-- [ ] **Step 2: pytest 增量回归(Anywhere)**
+- [x] **Step 2: pytest 增量回归(Anywhere)**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py tests/test_skill_scoring.py -v`
 Expected: 既有 ~64 + 新增 ~40 测试全绿。**若有失败**:据失败定位回对应 Task 修复。
 
-- [ ] **Step 3: pytest 全量回归(env-blocked,Windows deps-complete)**
+- [x] **Step 3: pytest 全量回归(env-blocked,Windows deps-complete)**
 
 Run(Windows deps-complete):`pytest tests/`
 Expected: 不引入新失败(baseline flakiness 不计;既有 env-blocked skip 不计)。**若新失败**:回 Task 1-8 定位。
 
-- [ ] **Step 4: 确认既有 64 测试未破(红线核对)**
+- [x] **Step 4: 确认既有 64 测试未破(红线核对)**
 
 核对 `tests/test_skill_evolution.py` + `tests/test_skill_evolution_plugin.py` + `tests/test_skill_loader_l1.py` 测试数 ≥ 既有 baseline(64)。若 Task 6 给既有测试补了 `GA_SKILL_SCORER=off` env,测试数不变,断言不改。
 
-- [ ] **Step 5: Commit(若有 ruff/测试修复)**
+- [x] **Step 5: Commit(若有 ruff/测试修复)**
 
 ```bash
 git add -A
