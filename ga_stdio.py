@@ -306,6 +306,11 @@ class BridgeCore:
         if mtype == "session/resume":
             self.handle_session_resume(msg)
             return
+        # Task 10 (S5): mcp/list — structured visibility of connected MCP
+        # servers + their tools via the singleton MCPClientManager's registry.
+        if mtype == "mcp/list":
+            self.handle_mcp_list(msg)
+            return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
         self.send_error(ERR_UNKNOWN_TYPE, f"{mtype} not implemented yet",
@@ -953,6 +958,57 @@ class BridgeCore:
         except Exception as e:
             self.send_error("session_resume_failed", f"{type(e).__name__}: {e}",
                             original_id=msg.get("id"))
+
+    def handle_mcp_list(self, msg):
+        """mcp/list → expose which MCP servers are connected + their tools.
+
+        Design §10.10 / tasks.md §3.8 / S5. Reads the singleton
+        MCPClientManager's registry: each server name → list of {name,
+        description} (inputSchema is omitted by contract — the bridge only
+        reports visibility, not call schemas). No-GA-spawn path (mgr is None)
+        yields servers=[].
+
+        Concurrency (a): for the real MCPToolRegistry (which has a _lock),
+        snapshot _tools inside that lock for consistency, mirroring
+        MCPToolRegistry.get_all_tools_summary (mcp_client.py:217-225) and the
+        change's unified-locking theme (T3-M1/T6). _tools is a registry-private
+        attribute, but the same registry code already touches it under
+        self._lock, so bridge-side locked access matches that internal pattern.
+        A test registry without _lock (e.g. _FakeRegistry in the unit suite)
+        takes the lock-free branch — visibility reads under CPython GIL are
+        atomic at the dict level, and the snapshot is best-effort by design.
+        """
+        servers = []
+        try:
+            from mcp_client import MCPClientManager
+            mgr = MCPClientManager.get_instance()
+            if mgr is not None:
+                registry = mgr.registry
+                lock = getattr(registry, "_lock", None)
+                if lock is not None:
+                    with lock:
+                        snapshot = [
+                            (n, list(registry._tools.get(n, [])))
+                            for n in registry._tools.keys()
+                        ]
+                else:
+                    snapshot = [
+                        (n, list(registry._tools.get(n, [])))
+                        for n in registry.get_server_names()
+                    ]
+                for name, tools in snapshot:
+                    servers.append({
+                        "name": name,
+                        "tools": [{"name": t.get("name", ""),
+                                   "description": t.get("description", "")}
+                                  for t in tools],
+                    })
+        except Exception as e:
+            self.send_error("mcp_list_failed", f"{type(e).__name__}: {e}",
+                            original_id=msg.get("id"))
+            return
+        self.send({"id": msg["id"], "type": "mcp/list", "version": VERSION,
+                   "servers": servers})
 
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.

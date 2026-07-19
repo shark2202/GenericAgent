@@ -1048,3 +1048,51 @@ def test_session_resume_restores_history():
                                 "history": [{"role": "user", "content": "hi"}],
                                 "llm_no": 0})
     assert ga.llmclient.backend.history == [{"role": "user", "content": "hi"}]
+
+
+# ---- Task 10 (S5): mcp/list structured visibility ----
+#
+# Covers design §10.10 / tasks.md §3.8 / S5. handle_mcp_list exposes which MCP
+# servers are connected and which tools each exposes. Uses the singleton
+# MCPClientManager's registry: mgr.registry.get_server_names() + each server's
+# tool list (name + description only, not inputSchema). No-GA-spawn path returns
+# servers=[] (get_instance returns None). Concurrency: registry._lock guards the
+# snapshot — see implementation note (a) in ga_stdio.handle_mcp_list.
+
+def test_mcp_list_emits_structured_servers(monkeypatch):
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+
+    class _FakeRegistry:
+        _tools = {
+            "github": [{"name": "create_issue", "description": "open an issue",
+                        "inputSchema": {"type": "object"}}],
+            "slack":  [{"name": "post", "description": "post msg",
+                        "inputSchema": {"type": "object"}}],
+        }
+        def get_server_names(self):
+            return list(self._tools.keys())
+
+    class _FakeMgr:
+        registry = _FakeRegistry()
+
+    import mcp_client as _mc
+    monkeypatch.setattr(_mc.MCPClientManager, "get_instance",
+                        classmethod(lambda cls: _FakeMgr()))
+    core.handle_mcp_list({"id": 1, "type": "mcp/list"})
+    m = [x for x in sent if x["type"] == "mcp/list"][0]
+    names = [s["name"] for s in m["servers"]]
+    assert "github" in names and "slack" in names
+    gh = next(s for s in m["servers"] if s["name"] == "github")
+    assert gh["tools"][0]["name"] == "create_issue"
+
+
+def test_mcp_list_no_manager_emits_empty_servers():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+    # MCPClientManager.get_instance() returns None when no GA has been spawned
+    core.handle_mcp_list({"id": 1, "type": "mcp/list"})
+    m = [x for x in sent if x["type"] == "mcp/list"][0]
+    assert m["servers"] == []
