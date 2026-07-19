@@ -27,3 +27,7 @@ handoff_hash: null
 classic_profile: full
 classic_migration: 1
 run_id: affb6252-a640-4e6c-b56e-1cc33020b7a2
+
+# 2026-07-19: inherited change (0/23 tasks, unimplemented). Left in open (honest state).
+# User decision: accept as legacy open; add-durable-agent-protocol build proceeds under soft-rule
+# override (no hard PreToolUse hook). Selfextract to be properly designed/implemented in a dedicated later round.
