@@ -337,3 +337,152 @@ def test_subagent_scorer_desc_actually_excludes_reason():
             "md", ["h1"], "- cat: d")
     desc = mgr.calls[0]["desc"]
     assert "GENERATOR_REASON_MUST_NOT_LEAK" not in desc
+
+
+# ── Task 4: distill() gate (6.4) ─────────────────────────────────
+
+class _FakeScoreClient:
+    """distill() 用:第一次 chat 返回 op JSON,第二次(inprocess scorer)返回打分 JSON。"""
+    def __init__(self, op_content, score_content):
+        self._contents = [op_content, score_content]
+        self._idx = 0
+        self.chat_calls = []
+
+    def chat(self, messages=None, tools=None):
+        self.chat_calls.append((messages, tools))
+        c = self._contents[self._idx] if self._idx < len(self._contents) else ""
+        self._idx += 1
+        return _FakeResp(c)
+
+
+class _DistillHandler:
+    """最小 handler:client / history_info / _pending_briefs / cwd / _subagent_mgr。"""
+    def __init__(self, client, history=None, subagent_mgr=None):
+        self.client = client
+        self.history_info = history or ["step"] * 10
+        self._pending_briefs = []
+        self._subagent_mgr = subagent_mgr
+        self.cwd = "."
+        self.working = {}
+
+
+_OP_CREATE = (
+    '{"action": "create", "name": "new-skill", '
+    '"skill_md": "---\\nname: new-skill\\ndescription: \\"d\\"\\nversion: 0.1\\nauthor: agent\\nevolvable: true\\nevolved_from: null\\nmcp_dependencies: []\\n---\\n# New\\n## When\\nbody", '
+    '"reason": "why"}'
+)
+
+
+def _patch_apply_op(monkeypatch):
+    """patch se._apply_op 记录调用,避免真落盘。返回 (recorder, restore 默认)。"""
+    calls = []
+
+    def _fake_apply_op(handler, op):
+        calls.append(dict(op))
+
+    monkeypatch.setattr(se, "_apply_op", _fake_apply_op)
+    return calls
+
+
+def _patch_get_skills_catalog(monkeypatch):
+    monkeypatch.setattr(se, "_get_skills_catalog", lambda: ({"cat": ("d", "p")}, None))
+
+
+def test_distill_gate_passes_scored_pass_to_apply_op(monkeypatch):
+    """verdict=pass + score>=阈值 → _apply_op 调用。"""
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    monkeypatch.setattr(se, "GA_SKILL_SCORER_THRESHOLD", 60)
+    c = _FakeScoreClient(_OP_CREATE, _VALID_SCORE_JSON)  # score=82 >= 60
+    h = _DistillHandler(c)
+    se.distill(c, h)
+    assert len(apply_calls) == 1
+    assert apply_calls[0]["name"] == "new-skill"
+
+
+def test_distill_gate_blocks_on_reject(monkeypatch):
+    """verdict=reject → _apply_op 不调用 + _pending_briefs 有 rejected-by-scorer。"""
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    monkeypatch.setattr(se, "GA_SKILL_SCORER_THRESHOLD", 60)
+    reject_json = (
+        '{"score": 30, "verdict": "reject", '
+        '"dims": {"reusability": 30, "verifiedness": 20, "non_redundancy": 40}, '
+        '"rationale": "low quality"}'
+    )
+    c = _FakeScoreClient(_OP_CREATE, reject_json)
+    h = _DistillHandler(c)
+    se.distill(c, h)
+    assert apply_calls == []                       # 不落盘
+    assert any("rejected" in b.lower() or "failed review" in b.lower()
+               for b in h._pending_briefs)
+
+
+def test_distill_gate_blocks_on_low_score_pass(monkeypatch):
+    """verdict=pass 但 score<阈值 → 不落盘(score=50 < 60)。"""
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    monkeypatch.setattr(se, "GA_SKILL_SCORER_THRESHOLD", 60)
+    low_json = (
+        '{"score": 50, "verdict": "pass", '
+        '"dims": {"reusability": 50, "verifiedness": 50, "non_redundancy": 50}, '
+        '"rationale": "borderline"}'
+    )
+    c = _FakeScoreClient(_OP_CREATE, low_json)
+    h = _DistillHandler(c)
+    se.distill(c, h)
+    assert apply_calls == []
+
+
+def test_distill_gate_score_eq_threshold_passes(monkeypatch):
+    """score==阈值 → 放行(>=,边界)。"""
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    monkeypatch.setattr(se, "GA_SKILL_SCORER_THRESHOLD", 60)
+    eq_json = (
+        '{"score": 60, "verdict": "pass", '
+        '"dims": {"reusability": 60, "verifiedness": 60, "non_redundancy": 60}, '
+        '"rationale": "at threshold"}'
+    )
+    c = _FakeScoreClient(_OP_CREATE, eq_json)
+    h = _DistillHandler(c)
+    se.distill(c, h)
+    assert len(apply_calls) == 1
+
+
+def test_distill_gate_off_no_scoring(monkeypatch):
+    """GA_SKILL_SCORER 未设 + 无 _subagent_mgr → 走 inprocess 兜底(默认开启打分)。
+
+    注:缺省 _subagent_mgr absent → InProcessScorer,闸门仍跑。
+    要测"v1 行为(无打分直接 _apply_op)",设 GA_SKILL_SCORER=off(D5 gate off 语义)。
+    """
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")   # 显式 gate off
+    c = _FakeScoreClient(_OP_CREATE, _VALID_SCORE_JSON)
+    h = _DistillHandler(c, subagent_mgr=None)
+    se.distill(c, h)
+    assert len(apply_calls) == 1                    # 直接 _apply_op,无打分
+    assert len(c.chat_calls) == 1                   # 只调一次 chat(生成 op),无 scorer chat
+
+
+def test_distill_none_op_skips_gate(monkeypatch):
+    """op=none → 不走闸门也不 _apply_op(v1 短路保留)。"""
+    _patch_get_skills_catalog(monkeypatch)
+    apply_calls = _patch_apply_op(monkeypatch)
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    c = _FakeScoreClient('{"action": "none"}', _VALID_SCORE_JSON)
+    h = _DistillHandler(c)
+    se.distill(c, h)
+    assert apply_calls == []
+    assert len(c.chat_calls) == 1                   # 只生成 op,无 scorer 调用

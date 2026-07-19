@@ -280,6 +280,73 @@ class SubagentScorer:
         )
 
 
+def _resolve_scorer(handler):
+    """gate 选择(Task 5 扩展降级链;本 Task 先提供基础版)。
+
+    返回 Scorer 实例或 None(None = gate off,走 v1 行为)。
+    """
+    mode = os.environ.get("GA_SKILL_SCORER", "").lower()
+    if mode in ("", "off", "none", "false", "0"):
+        # 缺省:由 _subagent_mgr present 决定;显式 off → v1 行为
+        if mode in ("off", "none", "false", "0"):
+            return None
+        mgr = getattr(handler, "_subagent_mgr", None)
+        if mgr is not None:
+            return SubagentScorer(mgr)
+        return InProcessScorer(handler.client)
+    if mode == "inprocess":
+        return InProcessScorer(handler.client)
+    if mode == "subagent":
+        mgr = getattr(handler, "_subagent_mgr", None)
+        if mgr is None:
+            sys.stderr.write(
+                "[scorer] GA_SKILL_SCORER=subagent but _subagent_mgr absent; "
+                "degrading to inprocess\n")
+            return InProcessScorer(handler.client)
+        return SubagentScorer(mgr)
+    # 未知值 → 兜底 inprocess(不静默 v1)
+    return InProcessScorer(handler.client)
+
+
+def _scoring_enabled(handler) -> bool:
+    """gate on = GA_SKILL_EVOLUTION_ENABLED=1(外层 distill 已门控)+ GA_SKILL_SCORER 非 off。
+
+    注:distill() 本身在 _on_agent_after 已被 _evolution_enabled() 门控;
+    此处再校验 GA_SKILL_SCORER 是否显式 off(v1 行为)。
+    """
+    mode = os.environ.get("GA_SKILL_SCORER", "").lower()
+    if mode in ("off", "none", "false", "0"):
+        return False
+    return True
+
+
+def _score_with_fallback(handler, op, skill_md, history, catalog) -> Verdict:
+    """调 _resolve_scorer 打分;SubagentScorer failed/timed_out → 退回 InProcessScorer(D6)。
+
+    不跳过打分直接落盘(降级 Brief 留痕)。
+    """
+    scorer = _resolve_scorer(handler)
+    if scorer is None:
+        # gate off:不应被调用(distill 闸门已 _scoring_enabled 门控);防御性返回 pass-through
+        return Verdict(score=GA_SKILL_SCORER_THRESHOLD, verdict=VerdictKind.PASS,
+                       dims={}, rationale="scoring disabled (v1 passthrough)",
+                       source="degraded")
+    try:
+        return scorer.score(op, skill_md, history, catalog)
+    except ScorerDegraded as e:
+        # D6: SubagentScorer failed/timed_out → inprocess 兜底 + Brief 记降级
+        try:
+            handler._pending_briefs.append(
+                build_brief("scorer-degraded-inprocess",
+                            op.get("name", "?"), str(e), f'.agents/skills/{op.get("name","?")}/SKILL.md'))
+        except Exception:
+            pass
+        fallback = InProcessScorer(handler.client)
+        v = fallback.score(op, skill_md, history, catalog)
+        v.source = "degraded"
+        return v
+
+
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
 
@@ -398,6 +465,22 @@ def distill(client, handler, signal=None):
     op = _parse_op(content)
     if not op or op.get('action') == 'none':
         return
+    # ── 打分闸门(hermes-isolated-skill-scorer) ──
+    # Design §3.1:在 _parse_op 与 _apply_op 之间插 Scorer.score()。
+    # gate off(GA_SKILL_SCORER=off 或 v1 模式)→ 直接 _apply_op(v1 行为,既有测试不破)。
+    name = (op.get('name') or '').strip()
+    skill_md = op.get('skill_md', '')
+    if _scoring_enabled(handler):
+        verdict = _score_with_fallback(handler, op, skill_md, history, catalog_text)
+        if verdict.verdict != VerdictKind.PASS or verdict.score < GA_SKILL_SCORER_THRESHOLD:
+            try:
+                handler._pending_briefs.append(
+                    build_brief('rejected-by-scorer', name, verdict.rationale,
+                                f'.agents/skills/{name}/SKILL.md'))
+            except Exception:
+                pass
+            return   # 不落盘
+    # ── 闸门结束,放行 → _apply_op ──
     try:
         _apply_op(handler, op)
     except Exception as e:
