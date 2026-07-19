@@ -14,8 +14,8 @@ base_ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 design_doc: docs/superpowers/specs/2026-07-19-durable-agent-protocol-design.md
 plan: docs/superpowers/plans/2026-07-19-durable-agent-protocol.md
 verify_result: pending
-verification_report: null
-branch_status: pending
+verification_report: docs/superpowers/reports/2026-07-19-add-durable-agent-protocol-verify.md
+branch_status: handled
 created_at: 2026-07-19
 verified_at: null
 archived: false
