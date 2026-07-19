@@ -489,6 +489,12 @@ class BridgeCore:
 
         _bridge_ask_user._current_ga = None
         ga_utils.ask_user = _bridge_ask_user
+        # C1: ga.py:8-12 binds `ask_user` into ga module globals via
+        # `from ga_utils import ask_user`; do_ask_user (ga.py:79) looks it up
+        # there (LOAD_GLOBAL), so patching ga_utils.ask_user alone never reaches
+        # the real do_ask_user path. Reroute ga.ask_user too.
+        import ga
+        ga.ask_user = _bridge_ask_user
         self._bridge_ask_user = _bridge_ask_user
 
     def _on_approval_request(self, task_id, tool_id, args):

@@ -753,3 +753,28 @@ def test_approval_response_unknown_slot_emits_stale_approval():
                                    "decision": "approve"})
     assert sent[-1]["type"] == "error"
     assert sent[-1]["code"] == "stale_approval"
+
+
+# ---- Task 5 C1 fix: patch ga.ask_user too — do_ask_user routes via ga globals ----
+#
+# ga.py:8-12 binds `ask_user` into ga module globals via
+# `from ga_utils import ask_user`; do_ask_user (ga.py:79) looks it up there
+# (LOAD_GLOBAL). Patching ga_utils.ask_user alone never reaches the real
+# do_ask_user path, so the approval human-in-the-loop fails at runtime even
+# though brief Step 1 tests pass (they call core._bridge_ask_user directly,
+# bypassing the route). This test pins the real route: after _patch_ask_user,
+# ga.ask_user must be the bridge version.
+
+def test_patch_ask_user_reroutes_ga_module_global():
+    """C1: do_ask_user (ga.py:79) looks up `ask_user` in ga module globals.
+    _patch_ask_user must replace ga.ask_user, not just ga_utils.ask_user,
+    or the real do_ask_user path never invokes the bridge version."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    import ga
+    original = ga.ask_user
+    try:
+        core._patch_ask_user()
+        assert ga.ask_user is core._bridge_ask_user, \
+            "ga.ask_user must be rerouted to bridge version (C1)"
+    finally:
+        ga.ask_user = original  # restore for test isolation
