@@ -2,6 +2,7 @@
 change: add-durable-agent-protocol
 design-doc: docs/superpowers/specs/2026-07-19-durable-agent-protocol-design.md
 base-ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 # Durable Agent Protocol v1 Implementation Plan
@@ -82,6 +83,7 @@ ga_stdio.py
 - `reflect/goal_mode.py:26-69`：`CONTINUATION_PROMPT` 模板（objective/elapsed/remaining/turn + 创造/检验/改进 3 阶段）；`BUDGET_LIMIT_PROMPT`（55-69）收口轮。bridge 复刻此模式，不从 reflect import。
 - 现有测试风格（`tests/test_agent_loop_dispatch.py`）：`_REPO_ROOT` 注入 `sys.path`；用 `_Resp` stand-in 对象；generator 用 `_drain` 跑到 `StopIteration.value`。wire 测试 harness 复用此 repo-root 注入模式。
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 0a: 推进 `add-selfextract-installer` 出 open 阶段（阻塞型前置）
@@ -144,6 +146,7 @@ git add openspec/changes/add-durable-agent-protocol/tasks.md
 git commit -m "chore(add-durable-agent-protocol): §1.1 unblock — add-selfextract-installer left open phase"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 0b: 确认 `hermes-isolated-skill-scorer` 无冲突（无冲突打勾）
@@ -167,6 +170,7 @@ git add openspec/changes/add-durable-agent-protocol/tasks.md
 git commit -m "chore(add-durable-agent-protocol): §1.2 confirm hermes-isolated-skill-scorer no conflict"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 1: ga_stdio.py 骨架——stdio 读写循环 + initialize/ready 握手 + 畸形 JSON error（E2/E3）
@@ -408,6 +412,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): skeleton — stdio loop + initialize/ready + bad_json/not_initialized (E2/E3)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 2: 单 task 流式——put_task → display_queue 排空 → task/delta + task/done（S1）
@@ -634,6 +639,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): single-task streaming — put_task→drain display_queue→task/delta+task/done (S1)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 3: hook 注册——tool_before→tool/call、turn_after→tool/result（含 ctx 字段表驱动）
@@ -841,6 +847,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): hook routing — tool_before→tool/call, turn_after→tool/result (Q3)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 4: task/interrupt → abort → task/done{interrupted}（S3）
@@ -950,6 +957,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): task/interrupt→abort→task/done{reason:interrupted} (S3)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 5: approval 拦截 ask_user + 线程模型（S4）—— spike 已定注入点
@@ -1186,6 +1194,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): approval loop — patch ask_user, block agent thread, continuation on same GA (S4)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 6: per-task GA 池 + 有界并发（S2）
@@ -1403,6 +1412,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): per-task GA pool + bounded concurrency (max 4, env-config) (S2/Q8)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 7: autonomous 自续循环 + budget（S7）
@@ -1593,6 +1603,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): autonomous continuation loop + budget{seconds,turns} (S7/Q5)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 8: slash/cmd 转发（S8/S9）
@@ -1755,6 +1766,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): slash/cmd forward — injection via prompt_for + raw state-class (S8/S9/Q6)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 9: llm/list + llm/select + session/resume（S6）
@@ -1920,6 +1932,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): llm/list + llm/select + session/resume bridging (S6)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 10: mcp/list（S5）
@@ -2044,6 +2057,7 @@ git add ga_stdio.py tests/test_ga_stdio_unit.py openspec/changes/add-durable-age
 git commit -m "feat(ga_stdio): mcp/list structured visibility via MCPClientManager registry (S5)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ### Task 11: 契约测试 11 个逐个补齐（黑盒 wire 测试，断结构非内容）
@@ -2553,6 +2567,7 @@ git add tests/_protocol_helpers.py tests/test_protocol_transport.py tests/test_p
 git commit -m "test(ga_stdio): 11 black-box wire tests — transport/capability/single/multi/interrupt/approval/mcp/llm/autonomous/slash/resilience (§4.1-4.11)"
 ```
 
+archived-with: 2026-07-19-add-durable-agent-protocol
 ---
 
 ## Self-Review（计划作者自查）
@@ -2604,6 +2619,7 @@ git commit -m "test(ga_stdio): 11 black-box wire tests — transport/capability/
 **2. Inline Execution** —— 在当前会话用 `executing-plans` 批量执行，带 checkpoint review。REQUIRED SUB-SKILL: superpowers:executing-plans。
 
 **注意：** Task 0a 是阻塞型前置——必须先推进 `add-selfextract-installer` 出 open 阶段，否则 Task 1+ 的源码写会被 comet hook 硬拦。Task 0b 是无冲突确认，秒过。
+
 
 
 

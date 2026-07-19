@@ -18,7 +18,7 @@ verification_report: docs/superpowers/reports/2026-07-19-add-durable-agent-proto
 branch_status: handled
 created_at: 2026-07-19
 verified_at: 2026-07-19
-archived: false
+archived: true
 direct_override: null
 handoff_context: openspec/changes/add-durable-agent-protocol/.comet/handoff/design-context.json
 handoff_hash: f06b8d3c39b7b4acb7b7ea8cde87f2f215f744366d10cfc32279f52c30d7127b
