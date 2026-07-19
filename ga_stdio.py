@@ -63,6 +63,20 @@ def _serialize(msg):
     return json.dumps(msg, ensure_ascii=False) + "\n"
 
 
+def _resolve_ga_from_ctx(ctx):
+    """Recover the GenericAgent instance from a hook ctx dict.
+
+    tool_before fires inside BaseHandler.dispatch (agent_loop.py:53/63) —
+    ctx carries `self` = handler, GA = handler.parent (ga.py:30).
+    turn_after fires inside agent_runner_loop (agent_loop.py:143) — ctx has
+    no `self`, only `handler`; GA = handler.parent.
+    Uses .get() so field drift in agent_loop doesn't crash the callback
+    (design §6.3 resilience boundary).
+    """
+    handler = ctx.get("self") or ctx.get("handler")
+    return getattr(handler, "parent", None)
+
+
 class TaskCtx:
     """Per-task runtime: one GenericAgent instance + its display_queue + control.
 
@@ -299,6 +313,83 @@ class BridgeCore:
         """Placeholder — wired in Task 7."""
         raise NotImplementedError("autonomous wired in Task 7")
 
+    # ---- Task 3: hook routing — tool_before→tool/call, turn_after→tool/result ----
+    #
+    # Registers global plugin.hooks callbacks once at bridge startup. Coexists
+    # with langfuse_tracing / skill_evolution callbacks: plugins.hooks.trigger
+    # walks every registered callback (plugins/hooks.py:18). Our closure
+    # reverse-looks-up task_id via ctx GA → ga_to_task[id(GA)] so tool events
+    # route to the right task even when multiple GAs run (Task 6).
+
+    def register_hooks(self):
+        """Register tool_before/turn_after callbacks (idempotent per instance).
+
+        Wired into serve() so the bridge publishes tool/call + tool/result
+        frames as soon as it starts reading stdin. The _hooks_registered flag
+        guards against double-registration on the same instance; cross-instance
+        accumulation is bounded by the bridge's own lifetime.
+        """
+        if self._hooks_registered:
+            return
+        self._hooks_registered = True
+        from plugins.hooks import register
+
+        @register("tool_before")
+        def _tool_before(ctx):
+            ga = _resolve_ga_from_ctx(ctx)
+            if ga is None:
+                return
+            with self._pool_lock:
+                task_id = self.ga_to_task.get(id(ga))
+            if task_id is None:
+                return
+            tool_name = ctx.get("tool_name", "?")
+            args = dict(ctx.get("args", {}) or {})
+            # agent_loop dispatch injects these internal keys (agent_loop.py:52/62)
+            args.pop("_index", None)
+            args.pop("_tool_num", None)
+            self._tool_id_counter += 1
+            tool_id = f"tool_{self._tool_id_counter}"
+            if tool_name == "ask_user":
+                # ask_user is intercepted by the approval path (Task 5), not tool/call.
+                self._on_approval_request(task_id, tool_id, args)
+                return
+            self._emit_tool_call(task_id=task_id, tool_id=tool_id,
+                                 name=tool_name, args=args)
+
+        @register("turn_after")
+        def _turn_after(ctx):
+            self._on_turn_after(ctx)
+
+    def _emit_tool_call(self, task_id, tool_id, name, args):
+        self.send({"id": self._next_id(), "type": "tool/call", "version": VERSION,
+                   "tool_id": tool_id, "task_id": task_id, "name": name, "args": args})
+
+    def _on_turn_after(self, ctx):
+        """Walk tool_results list → one tool/result per entry (agent_loop.py:137).
+
+        Resolves GA + task_id internally (not passed in) so the helper is
+        callable directly from tests and from the registered turn_after closure
+        with the same signature.
+        """
+        ga = _resolve_ga_from_ctx(ctx)
+        if ga is None:
+            return
+        with self._pool_lock:
+            task_id = self.ga_to_task.get(id(ga))
+        if task_id is None:
+            return
+        tool_results = ctx.get("tool_results", []) or []
+        for tr in tool_results:
+            tool_use_id = tr.get("tool_use_id", "")
+            content = tr.get("content", "")
+            self.send({"id": self._next_id(), "type": "tool/result", "version": VERSION,
+                       "tool_id": tool_use_id, "task_id": task_id, "content": content})
+
+    def _on_approval_request(self, task_id, tool_id, args):
+        """Wired in Task 5. Stub here so tool_before doesn't crash on ask_user."""
+        pass
+
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.
 
@@ -306,6 +397,7 @@ class BridgeCore:
         Blank lines are skipped silently. On stdin EOF the loop returns
         and the child process exits; the client detects stdout EOF (E1).
         """
+        self.register_hooks()   # Task 3: wire tool_before/turn_after once
         for line in self.stdin:
             stripped = line.strip()
             if not stripped:

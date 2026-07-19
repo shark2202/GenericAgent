@@ -337,3 +337,180 @@ def test_handle_task_start_assigns_task_id_and_regs_pool():
     for c in ctxs:
         if c.thread is not None:
             c.thread.join(timeout=2.0)
+
+
+# ---- Task 3: hook routing — tool_before→tool/call, turn_after→tool/result ----
+#
+# Covers design §6.3 / tasks.md §3.3 (tool events). Hook callbacks recover the
+# GA instance via ctx['self'].parent (tool_before) or ctx['handler'].parent
+# (turn_after), then reverse-lookup task_id in ga_to_task. The hook ctx is a
+# locals() snapshot whose fields may drift across agent_loop versions, so
+# callbacks use .get() throughout — the resilience tests pin that boundary.
+
+@pytest.fixture(autouse=True)
+def _isolate_hook_registry():
+    """Snapshot/restore the global hook registry around each test.
+
+    register_hooks() appends to plugins.hooks._registry (module-level). Without
+    isolation, callbacks registered by serve() in one test would leak into the
+    next test's trigger() call. We restore only the events this module touches
+    (tool_before / turn_after / tool_after) so plugin callbacks for other events
+    stay untouched.
+    """
+    from plugins.hooks import _registry
+    saved = {e: list(_registry.get(e, []))
+             for e in ("tool_before", "turn_after", "tool_after")}
+    yield
+    for e, fns in saved.items():
+        _registry[e] = list(fns)
+
+
+class _FakeGA:
+    """Stand-in for GenericAgent so we can test ga_to_task reverse-lookup."""
+    pass
+
+
+class _FakeHandler:
+    def __init__(self, parent):
+        self.parent = parent
+
+
+def test_resolve_ga_from_tool_before_ctx():
+    """tool_before ctx has `self` = handler; GA = handler.parent."""
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    ctx = {"self": handler, "tool_name": "code_run", "args": {"x": 1}}
+    assert ga_stdio._resolve_ga_from_ctx(ctx) is ga
+
+
+def test_resolve_ga_from_turn_after_ctx():
+    """turn_after ctx has `handler` (no `self`); GA = handler.parent."""
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    ctx = {"handler": handler, "tool_results": [], "turn": 1}
+    assert ga_stdio._resolve_ga_from_ctx(ctx) is ga
+
+
+def test_resolve_ga_returns_none_when_missing():
+    """Resilience: missing handler/self → None (don't crash the hook)."""
+    assert ga_stdio._resolve_ga_from_ctx({"tool_name": "x"}) is None
+    assert ga_stdio._resolve_ga_from_ctx({}) is None
+
+
+def test_tool_call_serialization_has_required_fields():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core._emit_tool_call(task_id="t3", tool_id="tool_1", name="code_run", args={"x": 1})
+    m = sent[-1]
+    assert m["type"] == "tool/call"
+    assert m["task_id"] == "t3"
+    assert m["tool_id"] == "tool_1"
+    assert m["name"] == "code_run"
+    assert m["args"] == {"x": 1}
+    assert m["version"] == "1"
+    assert "id" in m
+
+
+def test_tool_result_from_turn_after_ctx():
+    """turn_after callback walks tool_results list → one tool/result per entry."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    with core._pool_lock:
+        core.ga_to_task[id(ga)] = "t5"
+    sent = []
+    core.send = lambda m: sent.append(m)
+    tool_results = [{"tool_use_id": "tu_1", "content": "ok"},
+                    {"tool_use_id": "tu_2", "content": "fail"}]
+    ctx = {"handler": handler, "tool_results": tool_results, "turn": 3}
+    core._on_turn_after(ctx)
+    results = [m for m in sent if m["type"] == "tool/result"]
+    assert len(results) == 2
+    assert results[0]["tool_id"] == "tu_1"
+    assert results[0]["content"] == "ok"
+    assert results[0]["task_id"] == "t5"
+    assert results[1]["tool_id"] == "tu_2"
+
+
+# ---- register+trigger path: end-to-end hook wiring through the registry ----
+
+def test_register_hooks_then_trigger_tool_before_emits_tool_call():
+    """register_hooks() + plugins.hooks.trigger('tool_before', ctx) → tool/call frame.
+
+    Verifies the global hook is wired: trigger calls our closure, which resolves
+    the GA from ctx['self'].parent, reverse-looks-up task_id in ga_to_task,
+    strips the internal _index/_tool_num keys agent_loop dispatch injects, and
+    emits a versioned tool/call frame.
+    """
+    from plugins.hooks import trigger
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    with core._pool_lock:
+        core.ga_to_task[id(ga)] = "t7"
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.register_hooks()
+    trigger("tool_before", {"self": handler, "tool_name": "code_run",
+                           "args": {"x": 1, "_index": 0, "_tool_num": 1}})
+    calls = [m for m in sent if m["type"] == "tool/call"]
+    assert len(calls) == 1
+    assert calls[0]["task_id"] == "t7"
+    assert calls[0]["name"] == "code_run"
+    assert calls[0]["args"] == {"x": 1}  # _index/_tool_num stripped
+    assert calls[0]["tool_id"].startswith("tool_")
+    assert calls[0]["version"] == "1"
+
+
+def test_register_hooks_then_trigger_turn_after_emits_tool_results():
+    """register_hooks() + trigger('turn_after', ctx) → one tool/result per entry."""
+    from plugins.hooks import trigger
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    with core._pool_lock:
+        core.ga_to_task[id(ga)] = "t8"
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.register_hooks()
+    trigger("turn_after", {"handler": handler, "tool_results": [
+        {"tool_use_id": "tu_1", "content": "ok"}], "turn": 2})
+    results = [m for m in sent if m["type"] == "tool/result"]
+    assert len(results) == 1
+    assert results[0]["tool_id"] == "tu_1"
+    assert results[0]["content"] == "ok"
+    assert results[0]["task_id"] == "t8"
+    assert results[0]["version"] == "1"
+
+
+def test_tool_before_skips_when_ga_not_in_pool():
+    """handler.parent is a GA not registered in ga_to_task → no frame sent."""
+    from plugins.hooks import trigger
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.register_hooks()
+    trigger("tool_before", {"self": handler, "tool_name": "code_run", "args": {}})
+    assert sent == []  # no task_id reverse-lookup → skip silently
+
+
+def test_tool_before_resilience_missing_tool_name():
+    """ctx without 'tool_name' must not crash the hook (.get fallback)."""
+    from plugins.hooks import trigger
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGA()
+    handler = _FakeHandler(ga)
+    with core._pool_lock:
+        core.ga_to_task[id(ga)] = "t9"
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.register_hooks()
+    trigger("tool_before", {"self": handler, "args": {}})  # no tool_name
+    # Either skips or emits with the fallback name; both are acceptable as
+    # long as the hook does not raise. If emitted, name must be the fallback.
+    calls = [m for m in sent if m["type"] == "tool/call"]
+    if calls:
+        assert calls[0]["name"] == "?"
