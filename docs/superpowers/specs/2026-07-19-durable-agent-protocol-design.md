@@ -2,6 +2,8 @@
 comet_change: add-durable-agent-protocol
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-19-add-durable-agent-protocol
+status: final
 ---
 
 # Design Doc: Durable Agent Protocol v1
@@ -233,3 +235,4 @@ hook 全局注册一次（bridge 启动期），回调用 `ctx['self'].parent`�
 ## 11. Spec Patch
 
 无。本设计不回写 `specs/agent-protocol/spec.md`——schema 细节、bridge 架构、线程模型均属 Design Doc 内容；spec 12 需求 + S1-S9/E1-E3 场景 requirement 级已足够。
+
