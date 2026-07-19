@@ -2,6 +2,7 @@
 change: hermes-isolated-skill-scorer
 design-doc: docs/superpowers/specs/2026-07-19-hermes-isolated-skill-scorer-design.md
 base-ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 # hermes-isolated-skill-scorer 实施计划
@@ -16,6 +17,7 @@ base-ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 
 **Design Doc(权威技术设计):** `docs/superpowers/specs/2026-07-19-hermes-isolated-skill-scorer-design.md`(11 节)。规范事实源:OpenSpec delta `openspec/changes/hermes-isolated-skill-scorer/specs/skill-scoring/spec.md`(3 Requirement / 8 Scenario)+ `specs/skill-memory-integration/spec.md`(2 Requirement / 7 Scenario,含 R6 Spec Patch)。本计划是其可执行分解,Task ID 与 `openspec/changes/hermes-isolated-skill-scorer/tasks.md`(7 组 / 29 项)一一对应。
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 全局约束(Global Constraints)
@@ -92,6 +94,7 @@ base-ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 
 3.3 OQ 复核(`get_skill_detail` 列 v2 follow-up,本 change 不实现)在 Task 10 文档化登记;6.7/6.8 集成测与 6.9 全量回归独立成 Task 8/9(标注 env-blocked)。
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 1:Scorer 抽象与双实现
@@ -298,6 +301,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py
 git commit -m "feat(skill-scoring): add Verdict/Scorer/SCORE_SCHEMA/thresholds (tasks 1.1, 1.3)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ### Task 2:InProcessScorer + 单测(6.1) `[anywhere]`
@@ -567,6 +571,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py
 git commit -m "feat(skill-scoring): add InProcessScorer fallback + helpers (tasks 1.2, 6.1)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ### Task 3:SubagentScorer + 独立性硬保证 + 单测(6.2, 6.5) `[anywhere]`
@@ -827,6 +832,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py
 git commit -m "feat(skill-scoring): add SubagentScorer + independence guarantees (tasks 1.4, 3.1, 3.2, 6.2, 6.5)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 2:收敛点接线
@@ -1119,6 +1125,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py
 git commit -m "feat(skill-scoring): insert distill() gate + pass/reject/off logic (tasks 2.1, 2.2, 6.4)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ### Task 5:_resolve_scorer 降级链 + 单测(6.3) `[anywhere]`
@@ -1279,6 +1286,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py
 git commit -m "feat(skill-scoring): _resolve_scorer fallback chain + full branch tests (tasks 2.3, 2.4, 6.3)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 4:R6 熔断复位修复
@@ -1530,6 +1538,7 @@ git add plugins/skill_evolution.py tests/test_skill_scoring.py tests/test_skill_
 git commit -m "fix(skill-evolution): R6 breaker reset on foreground/scored-pass (tasks 4.1-4.4, 6.6)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 5:ga.py 接线
@@ -1619,6 +1628,7 @@ git add ga.py tests/test_skill_scoring.py
 git commit -m "feat(ga): wire _subagent_mgr with try/except ImportError guard (tasks 5.1, 5.2)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 6:测试(集成)
@@ -1776,6 +1786,7 @@ git add tests/test_skill_scoring_integration.py
 git commit -m "test(skill-scoring): integration e2e for distill full chain + fallback (tasks 6.7, 6.8)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ### Task 9:ruff + pytest 全量回归(6.9) `[anywhere]` + `[env-blocked]`
@@ -1813,6 +1824,7 @@ git commit -m "test(skill-scoring): ruff clean + full pytest regression (task 6.
 
 > 若 Step 1-3 无修改,本 Task 无 commit(仅验证)。
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## 组 7:文档
@@ -1893,6 +1905,7 @@ git add AGENTS.md hermes/NOTES_v1.5_recommendations.md HANDOFF.md
 git commit -m "docs(skill-scoring): env gate / R2+R6 status / handoff summary (tasks 7.1-7.3, 3.3)"
 ```
 
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
 ---
 
 ## Self-Review
@@ -1969,3 +1982,4 @@ git commit -m "docs(skill-scoring): env gate / R2+R6 status / handoff summary (t
 Task 1(类型)→ Task 2(InProcess)→ Task 3(Subagent)→ Task 4(闸门,用 1-3)→ Task 5(降级链,用 2-3)→ Task 6(R6,独立于 1-5,可并行但建议在 4 后)→ Task 7(ga.py 接线,独立)→ Task 8(集成,依赖 1-7)→ Task 9(全量回归,依赖 1-8)→ Task 10(文档,独立)。
 
 Task 6 与 Task 4 有耦合:Task 6 的 `_scoring_on_and_passed` 依赖 `GA_SKILL_SCORER` env 语义(Task 4 定义)。建议 Task 4 → Task 6 顺序执行。Task 7 可与 Task 4-6 并行(独立文件 ga.py)。
+

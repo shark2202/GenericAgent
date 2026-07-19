@@ -18,7 +18,7 @@ verification_report: docs/superpowers/reports/2026-07-19-hermes-isolated-skill-s
 branch_status: handled
 created_at: 2026-07-19
 verified_at: 2026-07-19
-archived: false
+archived: true
 direct_override: null
 handoff_context: openspec/changes/hermes-isolated-skill-scorer/.comet/handoff/design-context.json
 handoff_hash: de77adc774ddd51feb5ad1393874d79323a97c9959873ed741010808e5486202

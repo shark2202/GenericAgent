@@ -2,6 +2,8 @@
 comet_change: hermes-isolated-skill-scorer
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-19-hermes-isolated-skill-scorer
+status: final
 ---
 
 # hermes-isolated-skill-scorer 技术设计
@@ -309,3 +311,4 @@ except ImportError:
 ## 11. 非目标(承自 proposal)
 
 不做 R3(test-prompts 经验打分)/R5(ratchet 回退)/完整 darwin evolve loop;不改 subagents §5(`do_task`/`task` 工具/`GA_SUBAGENT_ENABLED` gate,D1 经代码验证为 red herring);不做 live steering / 通信中继 / 自动 merge / `GA_TASK_MODE=judge` 轻量模式(v2+);不做 darwin 全 9 维 / INDEX graph / embedding(v2+);R7(死计数器清理)/R8(fitness-log)/R9(validate 缺 loadability)不并入,另立 change。
+
