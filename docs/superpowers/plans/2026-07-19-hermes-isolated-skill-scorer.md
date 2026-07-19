@@ -1301,7 +1301,7 @@ git commit -m "feat(skill-scoring): _resolve_scorer fallback chain + full branch
 - 打分 off(v1 模式)background patch 成功 → 原 v1 累加 `_auto_patch_counts[name]++`(legacy 保留)
 - 打分 reject / `_apply_op` 失败 → 不改计数器
 
-- [ ] **Step 1: 写失败测试(R6 四分支)**
+- [x] **Step 1: 写失败测试(R6 四分支)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -1426,7 +1426,7 @@ def test_r6_foreground_reset_unlocks_after_cap(monkeypatch):
 Run: `pytest tests/test_skill_scoring.py -v -k r6`
 Expected: FAIL —— `reset_auto_patch_count` 未定义;`_apply_op` L104-107 无条件累加,foreground 不复位。
 
-- [ ] **Step 3: 实现 `reset_auto_patch_count` + `_scoring_on_and_passed` + 改造 `_apply_op`**
+- [x] **Step 3: 实现 `reset_auto_patch_count` + `_scoring_on_and_passed` + 改造 `_apply_op`**
 
 在 `plugins/skill_evolution.py` Task 5 段后追加:
 ```python
@@ -1499,12 +1499,12 @@ def _scoring_on_and_passed(handler, op) -> bool:
 # reset_auto_patch_count(name) 清零 —— 兑现 R6(v1 永不复位 bug 已修)。
 ```
 
-- [ ] **Step 4: 跑 R6 测试确认通过**
+- [x] **Step 4: 跑 R6 测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v -k r6`
 Expected: PASS(7 个 R6 测试全绿)。
 
-- [ ] **Step 5: 跑既有熔断测试确认不破(关键红线)**
+- [x] **Step 5: 跑既有熔断测试确认不破(关键红线)**
 
 Run: `pytest tests/test_skill_evolution_plugin.py -v`
 Expected: 既有 `_apply_op` / 熔断测试全绿。**若失败**:
@@ -1518,7 +1518,7 @@ monkeypatch.setenv("GA_SKILL_SCORER", "off")  # 既有 v1 行为测试走 legacy
 ```
 需逐个核对 `test_apply_op_patch_succeeds_and_counts` / `test_apply_op_failed_patch_not_counted` / `test_circuit_breaker_skips_after_max` 等是否需要补 env。**原则**:既有测试验证 v1 行为,显式 `GA_SKILL_SCORER=off` 使其走 legacy 分支,断言不动。
 
-- [ ] **Step 6: 跑既有回归**
+- [x] **Step 6: 跑既有回归**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿(策略 A 补 env 后)。

@@ -20,10 +20,10 @@
 
 ## 4. R6 熔断复位修复
 
-- [ ] 4.1 暴露 `reset_auto_patch_count(name)`:把 `_auto_patch_counts[name]` 置 0
-- [ ] 4.2 改 `_apply_op`:`skill_write_origin != 'background_review'`(前台)且 patch 成功 → 调 `reset_auto_patch_count(name)`(D5 (a))
-- [ ] 4.3 改 `_apply_op`:`background_review` patch 经打分闸门 `verdict=='pass'` 通过且 `_apply_op` 成功 → 调 `reset_auto_patch_count(name)` **清零**(D5 (b),OQ3 决议);打分 off(v1 模式)时维持原累加行为(legacy)
-- [ ] 4.4 文档:更新 `plugins/skill_evolution.py:36` 注释("前台修正时重置")使其与实际实现一致(原注释是空头支票,本 change 兑现)
+- [x] 4.1 暴露 `reset_auto_patch_count(name)`:把 `_auto_patch_counts[name]` 置 0
+- [x] 4.2 改 `_apply_op`:`skill_write_origin != 'background_review'`(前台)且 patch 成功 → 调 `reset_auto_patch_count(name)`(D5 (a))
+- [x] 4.3 改 `_apply_op`:`background_review` patch 经打分闸门 `verdict=='pass'` 通过且 `_apply_op` 成功 → 调 `reset_auto_patch_count(name)` **清零**(D5 (b),OQ3 决议);打分 off(v1 模式)时维持原累加行为(legacy)
+- [x] 4.4 文档:更新 `plugins/skill_evolution.py:36` 注释("前台修正时重置")使其与实际实现一致(原注释是空头支票,本 change 兑现)
 
 ## 5. ga.py 接线
 
@@ -37,7 +37,7 @@
 - [x] 6.3 单测 gate 选择 `_resolve_scorer`:env 各值 + `_subagent_mgr` present/absent 组合 → 断言返回的实现类
 - [x] 6.4 单测闸门:`pass`→`_apply_op` 调用;`reject`→不调用且 `_pending_briefs` 有 "rejected-by-scorer";v1 模式(gate off)→ 无打分直接 `_apply_op`
 - [x] 6.5 单测独立性:`SubagentScorer` 构造的 `desc` 不含 `op['reason']`;`tools_subset` 不含执行类工具
-- [ ] 6.6 单测 R6:前台 patch 成功 → 计数归零;打分通过的 background patch → 清零(OQ3);打分 off → 原累加;5 次后第 6 次 → 产 Brief 不落盘(熔断仍有效)
+- [x] 6.6 单测 R6:前台 patch 成功 → 计数归零;打分通过的 background patch → 清零(OQ3);打分 off → 原累加;5 次后第 6 次 → 产 Brief 不落盘(熔断仍有效)
 - [ ] 6.7 集成测(deps-complete env,Windows `uv pip install -e ".[ui]"`):monkeypatch 子 agent 产出合规打分 → distill 全链跑通(类比 hermes Step 5b / subagents §7 T1/T3)
 - [ ] 6.8 集成测:打分子 agent 不调 `submit_result`/超时 → distill 降级 inprocess + Brief 记降级
 - [ ] 6.9 `ruff check` 新代码 0 违规;`pytest tests/test_skill_evolution*.py tests/test_skill_scoring*.py` 不引入新失败(含既有 64 测试)
