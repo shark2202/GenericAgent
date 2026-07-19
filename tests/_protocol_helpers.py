@@ -6,6 +6,7 @@ JSON lines from stdout with a timeout. Asserts on message structure
 """
 import json
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -38,6 +39,28 @@ class BridgeProc:
             cwd=_REPO_ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, env=env, text=True, bufsize=1)
         self._deadline = time.monotonic() + timeout
+        # C1 final-review: single long-lived stdout reader → queue. The prior
+        # per-call ``recv`` spawned a fresh readline thread on EVERY call; when
+        # a previous thread was still blocked on readline (no line yet), the
+        # new thread raced it on ``proc.stdout.readline()`` and a frame read by
+        # an abandoned (join-timed-out) thread was lost. Pre-C1 the engine's
+        # diagnostic print()s on stdout kept readline returning quickly, masking
+        # the race; post-C1 those diagnostics moved to stderr (stdout is now
+        # pure JSON, quiet between frames), so readline blocks longer and the
+        # race dropped the task/done in interrupt/autonomous tests. One daemon
+        # reader thread feeding a Queue is the standard robust pattern and loses
+        # no frames. EOF is surfaced as a None sentinel so recv returns None.
+        self._stdout_q = queue.Queue()
+
+        def _stdout_reader():
+            while True:
+                line = self.proc.stdout.readline()
+                if not line:
+                    self._stdout_q.put(None)   # EOF sentinel
+                    return
+                self._stdout_q.put(line)
+
+        threading.Thread(target=_stdout_reader, daemon=True).start()
 
     def send(self, msg):
         line = json.dumps(msg, ensure_ascii=False) + "\n"
@@ -49,10 +72,11 @@ class BridgeProc:
 
         The wire contract says stdout carries only JSON frames, but the GA
         engine emits a few diagnostic print()s during init (e.g. llmcore's
-        ``[Info] Load mykeys from ...``) that land on stdout before the first
-        protocol frame. A robust wire harness tolerates those stray lines:
-        we keep reading lines within the timeout window, skipping any that
-        don't parse as a JSON dict, and return the first JSON frame we see.
+        ``[Info] Load mykeys from ...``) that — pre-C1 — landed on stdout
+        before the first protocol frame. Post-C1 the bridge redirects those
+        to stderr, so stdout is pure JSON; we still skip any non-JSON line as
+        defense-in-depth. Reads come from a single long-lived reader thread's
+        queue (see __init__), so no frame is lost to a readline-thread race.
         """
         if timeout is None:
             timeout = max(0.0, self._deadline - time.monotonic())
@@ -61,22 +85,33 @@ class BridgeProc:
             remaining = end - time.monotonic()
             if remaining <= 0:
                 return None
-            box = []
-            t = threading.Thread(target=lambda: box.append(self.proc.stdout.readline()), daemon=True)
-            t.start()
-            t.join(remaining)
-            if t.is_alive():
-                # readline blocked past the deadline — give up.
+            try:
+                item = self._stdout_q.get(timeout=remaining)
+            except queue.Empty:
                 return None
-            if not box or box[0] == "":
-                # EOF on stdout (child gone / pipe closed).
+            if item is None:  # EOF sentinel from the reader thread
                 return None
             try:
-                return json.loads(box[0])
+                return json.loads(item)
             except (json.JSONDecodeError, ValueError):
-                # Non-JSON diagnostic line on stdout — skip it and keep
-                # reading within the remaining budget.
+                # Non-JSON line on stdout — skip and keep reading within budget.
                 continue
+
+    def raw_recv(self, timeout=None):
+        """Read one RAW stdout line (string) without JSON parsing or skipping.
+
+        Used by tests that assert on the wire-level first line itself (e.g. the
+        C1 test: stdout must carry ONLY JSON, so the first line must parse —
+        using ``recv`` would mask the bug because recv skips non-JSON lines).
+        Returns the raw line string (with trailing newline) or None on
+        timeout/EOF.
+        """
+        if timeout is None:
+            timeout = max(0.0, self._deadline - time.monotonic())
+        try:
+            return self._stdout_q.get(timeout=timeout)
+        except queue.Empty:
+            return None
 
     def recv_until(self, predicate, timeout=30.0, max_msgs=200):
         """Read messages until predicate(msg) is True or timeout. Returns collected list."""

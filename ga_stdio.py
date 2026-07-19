@@ -14,13 +14,13 @@ Task 1 scope: stdio read/write loop + initialize/ready handshake + malformed
 JSON error (E2) + not-initialized guard (E3). Business message handlers are
 wired in Tasks 2-10; until then they return unknown_type.
 """
-import sys
-import os
+import itertools
 import json
+import os
 import queue
+import sys
 import threading
 import time
-import itertools
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -157,7 +157,30 @@ class BridgeCore:
 
     def __init__(self, stdin=None, stdout=None, max_concurrency=None):
         self.stdin = stdin or sys.stdin
-        self.stdout = stdout or sys.stdout
+        # C1 (final review): stdout is the wire transport (design §3 line 40 —
+        # stdout carries ONLY protocol frames; stderr is diagnostics). The GA
+        # engine emits unconditional print()s during init (llmcore.py:100
+        # ``[Info] Load mykeys from ...``, agentmain.py:139/238/241/147 etc.)
+        # which would land on stdout and break a strict line-delimited JSON
+        # client (Rust ``serde_json::from_str(line)`` crashes on the first
+        # non-JSON line). We do NOT touch the engine source — the bridge owns
+        # the wire discipline. Two paths:
+        #   - production (``python -m ga_stdio``: stdout is None): dup fd 1
+        #     into a private descriptor that survives the sys.stdout rebind
+        #     below, then rebind sys.stdout → sys.stderr so every subsequent
+        #     engine print() (worker threads included) lands on the stderr
+        #     diagnostics channel. send() writes JSON via os.write() on the
+        #     dup'd fd → parent reads pure JSON on stdout.
+        #   - test (stdout explicitly passed, e.g. io.StringIO / devnull):
+        #     no redirect; send() writes via self.stdout.write/flush. All 51
+        #     unit tests use this path and keep their existing behaviour.
+        if stdout is None:
+            self._wire_fd = os.dup(1)   # private dup; survives sys.stdout rebind
+            sys.stdout = sys.stderr     # engine print()s → stderr (design §3 line 39)
+            self.stdout = None
+        else:
+            self._wire_fd = None
+            self.stdout = stdout
         self._write_lock = threading.Lock()
         self.initialized = False
         # Task 6 (T3-M1/C2 lock收口): itertools.count.__next__ is a C-level
@@ -194,11 +217,21 @@ class BridgeCore:
         return next(self._event_id_seq)
 
     def send(self, msg):
-        """Write one JSON line to stdout (thread-safe)."""
+        """Write one JSON line to stdout (thread-safe).
+
+        Production path writes via ``os.write(self._wire_fd, ...)`` on the
+        dup'd fd 1 (kept independent of the sys.stdout rebind to stderr, so
+        engine diagnostics never interleave with wire frames — C1). Test path
+        writes via the caller-provided ``self.stdout`` (StringIO/devnull) and
+        flushes, preserving the in-memory pipe semantics the unit tests rely on.
+        """
         line = _serialize(msg)
         with self._write_lock:
-            self.stdout.write(line)
-            self.stdout.flush()
+            if self._wire_fd is not None:
+                os.write(self._wire_fd, line.encode("utf-8"))
+            else:
+                self.stdout.write(line)
+                self.stdout.flush()
 
     def send_error(self, code, message, original_id=None, **extra):
         """Emit an error frame.
@@ -428,6 +461,20 @@ class BridgeCore:
 
         We do NOT emit task/done here — the drain worker owns terminal
         frames for the task (single source of truth). We only ack.
+
+        I1 (final review): queued tasks (semaphore full, ctx.ga is None — ga
+        is only spawned in _start_task_thread when the slot is actually
+        acquired) have nothing to abort. The previous unconditional abort()
+        raised AttributeError → interrupt_failed, but left the ctx in both
+        pool and _queued; when a running task later released, _release_task
+        popped the "interrupted" ctx and started it → the client's
+        interrupted task executed anyway (zombie). The queued branch below
+        runs BEFORE the abort path, removes the ctx from _queued + pool, and
+        emits terminal task/done{reason:interrupted} directly (the queued
+        task has no drain worker to own that terminal frame, so the
+        single-source-of-truth rule for running tasks doesn't apply). No
+        abort() (nothing running), no semaphore.release() (queued tasks never
+        acquired a slot).
         """
         task_id = msg.get("task_id")
         with self._pool_lock:
@@ -435,6 +482,22 @@ class BridgeCore:
         if ctx is None:
             self.send_error("unknown_task", f"no running task {task_id!r}",
                             original_id=msg.get("id"))
+            return
+        # Queued (not yet running): no ga to abort, no slot to release. Remove
+        # from _queued + pool and emit terminal done{interrupted} so a later
+        # _release_task hand-off cannot wake the task the client just
+        # interrupted (zombie). Per S3 the terminal contract is
+        # task/done{reason:interrupted}; the queued task has no drain worker,
+        # so we own that frame here. No task/ack — the existing ack status
+        # enum is {running, queued, interrupting}; a queued-interrupt is
+        # terminal (not "interrupting"), and adding a new status for a
+        # one-shot terminal would inflate the enum without contract value.
+        if ctx.ga is None:
+            with self._pool_lock:
+                self._queued = [item for item in self._queued if item[0] is not ctx]
+                self.pool.pop(task_id, None)
+            self.send({"id": self._next_id(), "type": "task/done", "version": VERSION,
+                       "task_id": task_id, "reason": "interrupted"})
             return
         # Set ctx.interrupted ONLY AFTER abort() succeeds (I-1 fix). If abort
         # raises, the except branch emits interrupt_failed and returns; leaving
@@ -581,10 +644,12 @@ class BridgeCore:
             ctx.dq = ctx.ga.put_task(objective, source="stdio")
         self._drain_one_task_iteration(ctx)
         if ctx.interrupted:
-            self._emit_done(ctx, "interrupted"); return
+            self._emit_done(ctx, "interrupted")
+            return
         while True:
             if ctx.interrupted:
-                self._emit_done(ctx, "interrupted"); return
+                self._emit_done(ctx, "interrupted")
+                return
             elapsed = time.time() - ctx.start_time
             ctx.turns_used += 1
             seconds_exhausted = (seconds is not None and elapsed >= seconds)
@@ -593,7 +658,8 @@ class BridgeCore:
                 prompt = BUDGET_LIMIT_PROMPT.format(objective=objective)
                 ctx.dq = ctx.ga.put_task(prompt, source="stdio")
                 self._drain_one_task_iteration(ctx)
-                self._emit_done(ctx, "budget"); return
+                self._emit_done(ctx, "budget")
+                return
             remaining = (seconds - elapsed) if seconds is not None else float("inf")
             prompt = CONTINUATION_PROMPT.format(
                 objective=objective,
@@ -603,7 +669,8 @@ class BridgeCore:
             ctx.dq = ctx.ga.put_task(prompt, source="stdio")
             self._drain_one_task_iteration(ctx)
             if ctx.interrupted:
-                self._emit_done(ctx, "interrupted"); return
+                self._emit_done(ctx, "interrupted")
+                return
 
     def _drain_one_task_iteration(self, ctx):
         """Drain display_queue for one put_task iteration (until done).
@@ -1019,22 +1086,32 @@ class BridgeCore:
         """
         self.register_hooks()   # Task 3: wire tool_before/turn_after once
         self._patch_ask_user()  # Task 5: intercept ga_utils.ask_user → approval loop
-        for line in self.stdin:
-            stripped = line.strip()
-            if not stripped:
-                continue  # tolerate blank lines without an error frame
-            msg = _parse_line(line)
-            if msg is None:
-                self.send_error(ERR_BAD_JSON,
-                                f"unparseable line: {stripped[:80]}",
-                                original_id=None)
-                continue
-            try:
-                self.dispatch(msg)
-            except Exception as e:
-                self.send_error(ERR_INTERNAL_ERROR,
-                                f"{type(e).__name__}: {e}",
-                                original_id=msg.get("id"))
+        try:
+            for line in self.stdin:
+                stripped = line.strip()
+                if not stripped:
+                    continue  # tolerate blank lines without an error frame
+                msg = _parse_line(line)
+                if msg is None:
+                    self.send_error(ERR_BAD_JSON,
+                                    f"unparseable line: {stripped[:80]}",
+                                    original_id=None)
+                    continue
+                try:
+                    self.dispatch(msg)
+                except Exception as e:
+                    self.send_error(ERR_INTERNAL_ERROR,
+                                    f"{type(e).__name__}: {e}",
+                                    original_id=msg.get("id"))
+        finally:
+            # C1: release the dup'd wire fd on EOF so the parent sees stdout
+            # close promptly (test path: _wire_fd is None → no-op).
+            if self._wire_fd is not None:
+                try:
+                    os.close(self._wire_fd)
+                except OSError:
+                    pass
+                self._wire_fd = None
 
 
 if __name__ == "__main__":

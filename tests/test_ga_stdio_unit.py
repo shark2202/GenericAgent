@@ -25,7 +25,6 @@ if _REPO_ROOT not in sys.path:
 
 import ga_stdio  # noqa: E402
 
-
 # ---- brief step-1 tests: frame parse/serialize + VERSION/caps ----
 
 def test_serialize_roundtrip():
@@ -69,7 +68,7 @@ def _run_bridge(lines):
     bridge = ga_stdio.BridgeCore(stdin=stdin, stdout=stdout)
     bridge.serve()
     out = stdout.getvalue()
-    return [json.loads(l) for l in out.splitlines() if l.strip()]
+    return [json.loads(line) for line in out.splitlines() if line.strip()]
 
 
 def _line(d):
@@ -140,7 +139,7 @@ def test_ready_then_task_start_returns_ack():
 
     bridge._spawn_ga = lambda: _FakeGA()
     bridge.serve()
-    out = [json.loads(l) for l in stdout.getvalue().splitlines() if l.strip()]
+    out = [json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()]
     assert out[0]["type"] == "ready"
     ack = [m for m in out if m["type"] == "task/ack"][0]
     assert ack["status"] == "running"
@@ -691,6 +690,61 @@ def test_handle_task_interrupt_abort_success_sets_flag_and_acks():
     assert acks[0]["task_id"] == "t3"
     assert acks[0]["status"] == "interrupting"
     assert acks[0]["id"] == 300
+
+
+# ---- final-review I1: queued task interrupt → task/done{interrupted}, no zombie ----
+#
+# Covers design §6.5 line 167 (task/interrupt → task/done{reason:interrupted}) +
+# S3 contract. handle_task_interrupt previously assumed ctx.ga is always set
+# (running task) and called ctx.ga.abort() unconditionally. For a QUEUED task
+# (semaphore full, ctx parked in _queued + pool but ctx.ga is None — ga is
+# only spawned in _start_task_thread when the slot is actually acquired), the
+# unconditional abort() raised AttributeError → interrupt_failed error, BUT
+# the ctx was left in both pool and _queued. When a running task later
+# released, _release_task popped the "interrupted" queued ctx and started it
+# → the client's interrupted task executed anyway (zombie). Deterministic
+# state-machine gap (not a race). Fix: a queued branch BEFORE the abort path
+# that removes the ctx from _queued + pool and emits terminal
+# task/done{interrupted} — no abort() (nothing running), no semaphore.release()
+# (queued tasks never acquired a slot).
+
+def test_interrupt_queued_task_emits_done_interrupted_and_removes_from_queue():
+    """Queued task (ctx.ga is None) interrupt → task/done{interrupted} +
+    removed from _queued (no zombie execution on hand-off)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"), max_concurrency=1)
+    ga = _FakeGAWithAbort()
+    core._spawn_ga = lambda: ga
+    sent = []
+    core.send = lambda m: sent.append(m)
+    # first task occupies the single slot (spawn ga, blocks on empty dq)
+    core.handle_task_start({"id": 1, "type": "task/start", "prompt": "p1"})
+    # second task queues (max_concurrency=1, slot already held)
+    core.handle_task_start({"id": 2, "type": "task/start", "prompt": "p2"})
+    queued_ctx = list(core.pool.values())[1]   # the queued one (ga is None)
+    assert queued_ctx.ga is None, "queued task must not have spawned a ga yet"
+    assert len(core._queued) == 1
+    # interrupt the queued task — pre-fix this emits interrupt_failed + leaves
+    # the ctx in _queued (zombie on next hand-off); post-fix emits terminal
+    # done{interrupted} and removes it.
+    core.handle_task_interrupt({"id": 3, "type": "task/interrupt",
+                                "task_id": queued_ctx.task_id})
+    dones = [m for m in sent if m.get("type") == "task/done"]
+    assert dones and any(d["reason"] == "interrupted" for d in dones), (
+        "queued interrupt must emit terminal task/done{reason:interrupted}, "
+        f"got: {sent}")
+    done = dones[-1]
+    assert done["task_id"] == queued_ctx.task_id
+    # zombie check: ctx removed from pool + _queued so a later _release_task
+    # hand-off cannot wake it
+    assert queued_ctx.task_id not in core.pool, (
+        "queued ctx must be removed from pool on interrupt (else zombie)")
+    assert len(core._queued) == 0, (
+        "queued ctx must be removed from _queued on interrupt (else zombie)")
+    # semaphore unchanged: queued tasks never acquired a slot, so interrupting
+    # one must NOT release the semaphore (would over-grant slots).
+    assert core.semaphore._value == 0, (
+        "queued interrupt must not release semaphore (slot still held by the "
+        "running task); got " + str(core.semaphore._value))
 
 
 # ---- Task 5: approval loop — patch ask_user, block agent thread, continuation ----
