@@ -1133,7 +1133,7 @@ git commit -m "feat(skill-scoring): insert distill() gate + pass/reject/off logi
 - Consumes: `InProcessScorer`/`SubagentScorer`(Task 2-3)、`getattr(handler, '_subagent_mgr', None)`、`handler.client`
 - Produces: `_resolve_scorer(handler) -> Optional[Scorer]`(Task 4 已实现,本 Task 验证 + 加固未知 mode 兜底)
 
-- [ ] **Step 1: 写失败测试(gate 路由全分支 + 降级链)**
+- [x] **Step 1: 写失败测试(gate 路由全分支 + 降级链)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -1240,12 +1240,12 @@ def test_score_with_fallback_passes_through_inprocess(monkeypatch):
     assert h._pending_briefs == []
 ```
 
-- [ ] **Step 2: 跑测试确认状态**
+- [x] **Step 2: 跑测试确认状态**
 
 Run: `pytest tests/test_skill_scoring.py -v -k "resolve_scorer or score_with_fallback"`
 Expected: 大部分 PASS(Task 4 已实现基础版);若未知 mode 兜底分支有偏差则 FAIL —— 据此加固。
 
-- [ ] **Step 3: 加固 `_resolve_scorer`(若 Step 2 有 FAIL,据失败补分支)**
+- [x] **Step 3: 加固 `_resolve_scorer`(若 Step 2 有 FAIL,据失败补分支)**
 
 核对 Task 4 实现的 `_resolve_scorer` 是否覆盖:
 - `off`/`none`/`false`/`0` → `None`
@@ -1573,7 +1573,7 @@ def test_subagent_mgr_absent_when_module_not_importable(monkeypatch):
 
 > **测试策略注:** 完整的 `GenericAgentHandler._subagent_mgr` 注入测试需 import `ga.py`(依赖 `pywebview` 等,Linux 沙箱不可跑),列入 Task 8 集成测(env-blocked)。本 Task 单测仅验证"`subagent_manager` 未合并时 try/except 的必要性"。
 
-- [ ] **Step 2: 跑测试确认状态**
+- [x] **Step 2: 跑测试确认状态**
 
 Run: `pytest tests/test_skill_scoring.py -v -k subagent_mgr_absent`
 Expected: PASS(当前 dev 无 `subagent_manager`,断言成立)或 SKIP(若已合并)。

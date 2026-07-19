@@ -9,8 +9,8 @@
 
 - [x] 2.1 改 `distill()`(`plugins/skill_evolution.py:148-152`):在 `_parse_op` 与 `_apply_op` 之间插 `_scorer.score(op, skill_md, history, catalog)`
 - [x] 2.2 闸门逻辑:`verdict=='pass'` 且 `score>=阈值` → 继续 `_apply_op`;否则 `handler._pending_briefs.append(build_brief('rejected-by-scorer', name, rationale, path))` 且不落盘
-- [ ] 2.3 gate 选择函数 `_resolve_scorer(handler)`:读 `GA_SKILL_SCORER` env,缺省由 `getattr(handler,'_subagent_mgr',None)` 是否 present 决定默认;返回 `SubagentScorer` 或 `InProcessScorer`
-- [ ] 2.4 gate 降级链:requested `subagent` 但 `_subagent_mgr` absent → stderr 一行 + 用 `InProcessScorer`;`SubagentScorer` 返回 `failed`/`timed_out` → 退回 `InProcessScorer` 兜底 + Brief 记降级(不跳过打分直接落盘)
+- [x] 2.3 gate 选择函数 `_resolve_scorer(handler)`:读 `GA_SKILL_SCORER` env,缺省由 `getattr(handler,'_subagent_mgr',None)` 是否 present 决定默认;返回 `SubagentScorer` 或 `InProcessScorer`
+- [x] 2.4 gate 降级链:requested `subagent` 但 `_subagent_mgr` absent → stderr 一行 + 用 `InProcessScorer`;`SubagentScorer` 返回 `failed`/`timed_out` → 退回 `InProcessScorer` 兜底 + Brief 记降级(不跳过打分直接落盘)
 
 ## 3. 独立性硬保证
 
@@ -34,7 +34,7 @@
 
 - [x] 6.1 单测 `InProcessScorer`:monkeypatch `client.chat` 返回打分 JSON → 断言 `Verdict` 映射正确;mock 返回非合规 → 降级行为
 - [x] 6.2 单测 `SubagentScorer`:mock `handler._subagent_mgr.run_single` 返回合规/`failed`/`timed_out` → 断言 `Verdict`/降级路径
-- [ ] 6.3 单测 gate 选择 `_resolve_scorer`:env 各值 + `_subagent_mgr` present/absent 组合 → 断言返回的实现类
+- [x] 6.3 单测 gate 选择 `_resolve_scorer`:env 各值 + `_subagent_mgr` present/absent 组合 → 断言返回的实现类
 - [x] 6.4 单测闸门:`pass`→`_apply_op` 调用;`reject`→不调用且 `_pending_briefs` 有 "rejected-by-scorer";v1 模式(gate off)→ 无打分直接 `_apply_op`
 - [x] 6.5 单测独立性:`SubagentScorer` 构造的 `desc` 不含 `op['reason']`;`tools_subset` 不含执行类工具
 - [ ] 6.6 单测 R6:前台 patch 成功 → 计数归零;打分通过的 background patch → 清零(OQ3);打分 off → 原累加;5 次后第 6 次 → 产 Brief 不落盘(熔断仍有效)
