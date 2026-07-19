@@ -1,7 +1,7 @@
 ## 1. 前置流程清理（build 前必做）
 
-- [ ] 1.1 推进或收尾 `add-selfextract-installer`（当前 open 阶段禁写源码），使其离开 open，解除本 change build 阶段写 `tests/*.py` + Python bridge 的阻塞
-- [ ] 1.2 确认 `hermes-isolated-skill-scorer`（design 阶段）不冲突；如已进入 build，协调顺序避免双 change 同时写源码
+- [x] 1.1 ~~推进或收尾 `add-selfextract-installer`~~ → supersede：comet 债清债在 dev 主仓完成（`add-llm-slash-cmd` 归档 + `2026-07-09-skill-lazy-load-mtime-cache` 真归档）。`add-selfextract-installer`（0/23 未实现、与协议无关）按用户决策接受为遗留 open，build 在软规则覆盖下进行（无硬 PreToolUse hook；selfextract yaml note 已记遗留决策，后续专门正规做）。阻塞解除。
+- [x] 1.2 `hermes-isolated-skill-scorer` 确认无冲突：无 `.comet.yaml`（非 comet 托管），不构成源码写阻塞。
 
 ## 2. design 阶段 Design Doc（brainstorming 产出，解 design.md 的 Open Questions）
 
