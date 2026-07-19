@@ -486,3 +486,110 @@ def test_distill_none_op_skips_gate(monkeypatch):
     se.distill(c, h)
     assert apply_calls == []
     assert len(c.chat_calls) == 1                   # 只生成 op,无 scorer 调用
+
+
+# ── Task 5: _resolve_scorer + fallback (6.3) ─────────────────────
+
+from plugins.skill_evolution import _resolve_scorer, _score_with_fallback  # noqa: E402
+
+
+class _StubClient:
+    def chat(self, messages=None, tools=None):
+        return _FakeResp(_VALID_SCORE_JSON)
+
+
+def test_resolve_scorer_inprocess_explicit(monkeypatch):
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    h = _DistillHandler(_StubClient(), subagent_mgr=object())  # 有 mgr 也强制 inprocess
+    s = _resolve_scorer(h)
+    # 用 se.InProcessScorer(模块属性引用)而非直接 InProcessScorer:
+    # test_threshold_defaults 调 importlib.reload(se) 会重建 InProcessScorer 类,
+    # 直接 import 的 InProcessScorer 变成旧类引用,isinstance 返 False(双类问题)。
+    # se.InProcessScorer 对 reload 鲁棒,与 Task 2/3 的 .value / se.ScorerDegraded 风格一致。
+    assert isinstance(s, se.InProcessScorer)
+
+
+def test_resolve_scorer_subagent_with_mgr(monkeypatch):
+    monkeypatch.setenv("GA_SKILL_SCORER", "subagent")
+    h = _DistillHandler(_StubClient(), subagent_mgr=_FakeMgr(_WorkerResult("completed", result={
+        "score": 90, "verdict": "pass",
+        "dims": {"reusability": 90, "verifiedness": 90, "non_redundancy": 90},
+        "rationale": "x"})))
+    s = _resolve_scorer(h)
+    assert isinstance(s, se.SubagentScorer)
+
+
+def test_resolve_scorer_subagent_without_mgr_degrades(monkeypatch, capsys):
+    """requested subagent 但 _subagent_mgr absent → inprocess + stderr 一行。"""
+    monkeypatch.setenv("GA_SKILL_SCORER", "subagent")
+    h = _DistillHandler(_StubClient(), subagent_mgr=None)
+    s = _resolve_scorer(h)
+    assert isinstance(s, se.InProcessScorer)
+    captured = capsys.readouterr()
+    assert "degrading to inprocess" in captured.err
+
+
+def test_resolve_scorer_default_uses_subagent_when_mgr_present(monkeypatch):
+    monkeypatch.delenv("GA_SKILL_SCORER", raising=False)
+    mgr = _FakeMgr(_WorkerResult("completed", result={
+        "score": 90, "verdict": "pass",
+        "dims": {"reusability": 90, "verifiedness": 90, "non_redundancy": 90},
+        "rationale": "x"}))
+    h = _DistillHandler(_StubClient(), subagent_mgr=mgr)
+    s = _resolve_scorer(h)
+    assert isinstance(s, se.SubagentScorer)
+
+
+def test_resolve_scorer_default_inprocess_when_mgr_absent(monkeypatch):
+    monkeypatch.delenv("GA_SKILL_SCORER", raising=False)
+    h = _DistillHandler(_StubClient(), subagent_mgr=None)
+    s = _resolve_scorer(h)
+    assert isinstance(s, se.InProcessScorer)
+
+
+def test_resolve_scorer_off_returns_none(monkeypatch):
+    """显式 off → None(gate off,v1 行为)。"""
+    for v in ("off", "none", "false", "0"):
+        monkeypatch.setenv("GA_SKILL_SCORER", v)
+        h = _DistillHandler(_StubClient(), subagent_mgr=object())
+        assert _resolve_scorer(h) is None, f"GA_SKILL_SCORER={v} should be off"
+
+
+def test_resolve_scorer_unknown_mode_falls_back_inprocess(monkeypatch):
+    """未知值 → inprocess 兜底(不静默 v1)。"""
+    monkeypatch.setenv("GA_SKILL_SCORER", "weird-value")
+    h = _DistillHandler(_StubClient(), subagent_mgr=None)
+    s = _resolve_scorer(h)
+    assert isinstance(s, se.InProcessScorer)
+
+
+def test_score_with_fallback_degrades_on_subagent_failure(monkeypatch):
+    """SubagentScorer failed → 退回 InProcessScorer + Brief 记降级(D6)。"""
+    monkeypatch.setenv("GA_SKILL_SCORER", "subagent")
+    mgr = _FakeMgr(_WorkerResult("failed", error="boom"))  # run_single failed
+    h = _DistillHandler(_StubClient(), subagent_mgr=mgr)
+    v = _score_with_fallback(h, {"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                             "md", ["h1"], "- cat: d")
+    # 降级到 inprocess,StubClient 返回合规 JSON
+    assert v.source == "degraded"
+    assert any("degraded" in b.lower() for b in h._pending_briefs)
+
+
+def test_score_with_fallback_degrades_on_timeout(monkeypatch):
+    monkeypatch.setenv("GA_SKILL_SCORER", "subagent")
+    mgr = _FakeMgr(_WorkerResult("timed_out"))
+    h = _DistillHandler(_StubClient(), subagent_mgr=mgr)
+    v = _score_with_fallback(h, {"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                             "md", ["h1"], "- cat: d")
+    assert v.source == "degraded"
+    assert any("degraded" in b.lower() for b in h._pending_briefs)
+
+
+def test_score_with_fallback_passes_through_inprocess(monkeypatch):
+    """InProcessScorer 正常返回 → 不降级。"""
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    h = _DistillHandler(_StubClient(), subagent_mgr=None)
+    v = _score_with_fallback(h, {"action": "create", "name": "x", "skill_md": "md", "reason": "r"},
+                             "md", ["h1"], "- cat: d")
+    assert v.source == "inprocess"
+    assert h._pending_briefs == []
