@@ -52,3 +52,11 @@
 - **支持平台**：Windows / macOS / Linux。
 - **包管理器**：`uv`。
 - **主分支**：`main`；集成分支：`dev`。打 `v*` tag 前应先在 `dev` 上完成 dev/test 验证。
+
+## 特性 env gates（hermes skill-scoring 闸门）
+
+| env | 默认 | 作用 |
+|---|---|---|
+| `GA_SKILL_SCORER` | (缺省:`_subagent_mgr` present → `subagent`;absent → `inprocess`) | skill 打分闸门实现选择。`subagent`=真隔离子 agent;`inprocess`=同进程二次 LLM(弱独立兜底);`off`/`none`/`false`/`0`=v1 行为(无打分直接落盘) |
+| `GA_SKILL_SCORER_THRESHOLD` | `60` | 打分闸门阈值,`verdict==pass` 且 `score >= 阈值` 才放行 |
+| `GA_SKILL_SCORER_TIMEOUT` | `600` | `SubagentScorer` 子 agent 超时(秒),超时 → 降级 `InProcessScorer` |

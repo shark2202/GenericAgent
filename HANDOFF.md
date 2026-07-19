@@ -219,3 +219,27 @@ grep -n "def do_skill_manage\|def distill\|def _apply_op\|MAX_AUTO_PATCH" \
   ga.py plugins/skill_evolution.py skill_loader.py
 /tmp/gatestenv/bin/pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py -q
 ```
+
+## hermes-isolated-skill-scorer 交接摘要
+
+**Change:** `openspec/changes/hermes-isolated-skill-scorer/`
+**Design Doc:** `docs/superpowers/specs/2026-07-19-hermes-isolated-skill-scorer-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-19-hermes-isolated-skill-scorer.md`
+
+**收敛点:** `plugins/skill_evolution.py:distill()` 的 `_parse_op` 与 `_apply_op` 之间插
+`Scorer.score(op, skill_md, history, catalog)` 闸门。pass+≥阈值 → `_apply_op`;否则
+Brief "rejected-by-scorer" 不落盘。
+
+**双实现:** `SubagentScorer`(真隔离,经 `handler._subagent_mgr.run_single`)+
+`InProcessScorer`(同进程二次 LLM 兜底)。gate `GA_SKILL_SCORER` + `_subagent_mgr` present 决定。
+subagents 未合并到 dev → `_subagent_mgr=None` → 缺省走 inprocess(本 change 可独立落地)。
+
+**R6 修复:** `_apply_op` patch 成功时,foreground 修正或 scored-pass background →
+`reset_auto_patch_count(name)` 清零(OQ3 决议);打分 off → 原 v1 累加(legacy)。
+
+**测试:** 单测(test_skill_scoring.py)覆盖 InProcessScorer/SubagentScorer mock/gate 路由/
+闸门/独立性/R6;集成测(test_skill_scoring_integration.py)6.7 标 skipif 待 subagents 合并,
+6.8 降级链当前 dev 可跑。既有 ~64 测试不破(补 `GA_SKILL_SCORER=off` env 走 legacy 分支)。
+
+**回滚:** `GA_SKILL_SCORER=off` 或关 `GA_SKILL_EVOLUTION_ENABLED`。R6 修复不可回退
+(行为修复,回退到"永不复位"bug 态不可接受)。
