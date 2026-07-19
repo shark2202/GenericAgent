@@ -422,7 +422,7 @@ git commit -m "feat(ga_stdio): skeleton — stdio loop + initialize/ready + bad_
 - Consumes: `ga_stdio.BridgeCore`（Task 1）、`agentmain.GenericAgent`（`put_task` / `run` / `display_queue` item 形状）。
 - Produces: `ga_stdio.TaskCtx`（数据类：`ga`, `dq`, `task_id`, `thread`）、`BridgeCore.handle_task_start`（单 task，不并发——并发在 Task 6）、`BridgeCore.drain_display_queue(task_ctx)`（排空 dq 发 task/delta + task/done）。
 
-- [ ] **Step 1: 写失败测试——drain_display_queue 用 fake dq**
+- [x] **Step 1: 写失败测试——drain_display_queue 用 fake dq**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -465,7 +465,7 @@ def test_drain_display_queue_error_done_emits_error_reason():
     assert sent[-1].get("error")
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -473,7 +473,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `AttributeError: module 'ga_stdio' has no attribute 'TaskCtx'`（及 `drain_display_queue`）。
 
-- [ ] **Step 3: 实现 TaskCtx + handle_task_start + drain_display_queue**
+- [x] **Step 3: 实现 TaskCtx + handle_task_start + drain_display_queue**
 
 在 `ga_stdio.py` 顶部 import 区加（在 `import threading` 后）：
 
@@ -617,7 +617,7 @@ class TaskCtx:
             self.handle_task_start(msg)
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -625,7 +625,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（7 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.3。
 
