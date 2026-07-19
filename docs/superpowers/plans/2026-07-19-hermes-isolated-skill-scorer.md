@@ -845,7 +845,7 @@ git commit -m "feat(skill-scoring): add SubagentScorer + independence guarantees
 
 > **依赖顺序注:** Task 4 与 Task 5 紧耦合(闸门调 `_score_with_fallback`,后者调 `_resolve_scorer`)。本 Task 先实现一个最小的 `_score_with_fallback`(inline 用 `_resolve_scorer` 占位),Task 5 补全 `_resolve_scorer` + 降级链。两 Task 可在同一个 review 周期内完成;若执行者偏好,可合并为一次 commit(本计划保留两个 commit 以利 review)。
 
-- [ ] **Step 1: 写失败测试(闸门 pass/reject/gate-off)**
+- [x] **Step 1: 写失败测试(闸门 pass/reject/gate-off)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -1003,7 +1003,7 @@ def test_distill_none_op_skips_gate(monkeypatch):
 Run: `pytest tests/test_skill_scoring.py -v -k distill_gate`
 Expected: FAIL —— 既有 `distill()` L148-154 直接 `_apply_op`,无闸门;`_scoring_enabled` 未定义。
 
-- [ ] **Step 3: 实现 `_scoring_enabled` + `_score_with_fallback` + `distill()` 闸门改造**
+- [x] **Step 3: 实现 `_scoring_enabled` + `_score_with_fallback` + `distill()` 闸门改造**
 
 在 `plugins/skill_evolution.py` Task 3 的 `SubagentScorer` 后追加(Task 5 会扩展 `_resolve_scorer`):
 ```python
@@ -1107,7 +1107,7 @@ def _score_with_fallback(handler, op, skill_md, history, catalog) -> Verdict:
 Run: `pytest tests/test_skill_scoring.py -v -k distill_gate`
 Expected: PASS(6 个闸门测试全绿)。
 
-- [ ] **Step 5: 跑既有回归(关键红线)**
+- [x] **Step 5: 跑既有回归(关键红线)**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿。**若失败**:既有 `distill()` 测试可能未设 `GA_SKILL_SCORER` env → 默认走 InProcessScorer(需 mock client.chat 两次)。检查 `test_skill_evolution_plugin.py` 是否有 distill 端到端测试;若有,需在测试里显式 `monkeypatch.setenv("GA_SKILL_SCORER", "off")` 或 mock `client.chat` 多次返回。**修复策略**:既有 distill 测试若依赖单次 chat,补 `GA_SKILL_SCORER=off` 使其走 v1 路径(不破语义)。
