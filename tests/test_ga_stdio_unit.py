@@ -985,3 +985,66 @@ def test_slash_unsupported_command_emits_error():
     core.handle_slash_cmd({"id": 1, "type": "slash/cmd", "cmd": "/scheduler", "args": ""})
     assert sent[-1]["type"] == "error"
     assert sent[-1]["code"] == "slash_unsupported"
+
+
+# ---- Task 9: llm/list + llm/select + session/resume (S6) ----
+#
+# Covers design §10.9 / tasks.md §3.9 / S6. llm/list queries ga.list_llms();
+# llm/select calls ga.next_llm(n) to switch model; session/resume restores
+# ga.llmclient.backend.history (and optionally next_llm(llm_no)). These operate
+# on a GA for an existing task (v1 requires task_id; scoped to that task's GA).
+
+class _FakeGAWithLLM:
+    def __init__(self):
+        self.switched_to = None
+        self.history_set = None
+    def list_llms(self):
+        return [(0, "openai/gpt-4", True), (1, "anthropic/claude", False)]
+    def next_llm(self, n=-1):
+        self.switched_to = n
+    def shutdown(self): pass
+
+
+def _make_ctx_with_ga(core, ga, task_id="tL"):
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id=task_id, thread=None)
+    with core._pool_lock:
+        core.pool[task_id] = ctx
+        core.ga_to_task[id(ga)] = task_id
+    return ctx
+
+
+def test_llm_list_emits_models_with_current():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithLLM()
+    _make_ctx_with_ga(core, ga, "tL")
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_llm_list({"id": 1, "type": "llm/list", "task_id": "tL"})
+    m = [x for x in sent if x["type"] == "llm/list"][0]
+    assert m["current_no"] == 0
+    assert {"no": 0, "name": "openai/gpt-4", "current": True} in m["llms"]
+    assert {"no": 1, "name": "anthropic/claude", "current": False} in m["llms"]
+
+
+def test_llm_select_switches_model():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithLLM()
+    _make_ctx_with_ga(core, ga, "tL")
+    core.handle_llm_select({"id": 1, "type": "llm/select", "task_id": "tL", "n": 1})
+    assert ga.switched_to == 1
+
+
+def test_session_resume_restores_history():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    class _GA(_FakeGAWithLLM):
+        def __init__(self):
+            super().__init__()
+            class _Backend: history = None
+            self.llmclient = type("C", (), {"backend": _Backend()})()
+    ga = _GA()
+    _make_ctx_with_ga(core, ga, "tS")
+    core.handle_session_resume({"id": 1, "type": "session/resume",
+                                "task_id": "tS",
+                                "history": [{"role": "user", "content": "hi"}],
+                                "llm_no": 0})
+    assert ga.llmclient.backend.history == [{"role": "user", "content": "hi"}]

@@ -293,6 +293,19 @@ class BridgeCore:
         if mtype == "slash/cmd":
             self.handle_slash_cmd(msg)
             return
+        # Task 9 (S6): llm/list + llm/select + session/resume. llm/list queries
+        # ga.list_llms(); llm/select calls ga.next_llm(n); session/resume restores
+        # ga.llmclient.backend.history (+ optional next_llm(llm_no)). All three
+        # operate on a GA for an existing task_id (see _ctx_for guard).
+        if mtype == "llm/list":
+            self.handle_llm_list(msg)
+            return
+        if mtype == "llm/select":
+            self.handle_llm_select(msg)
+            return
+        if mtype == "session/resume":
+            self.handle_session_resume(msg)
+            return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
         self.send_error(ERR_UNKNOWN_TYPE, f"{mtype} not implemented yet",
@@ -877,6 +890,69 @@ class BridgeCore:
             return
         self.send_error("slash_unsupported", f"unknown slash command: {cmd!r}",
                         original_id=msg.get("id"))
+
+    # ---- Task 9: llm/list + llm/select + session/resume bridging (S6) ----
+    #
+    # Covers design §10.9 / tasks.md §3.9 / S6. llm/list queries ga.list_llms();
+    # llm/select calls ga.next_llm(n) to switch model; session/resume restores
+    # ga.llmclient.backend.history (and optionally next_llm(llm_no)). All three
+    # operate on a GA for an ALREADY-EXISTING task (v1 requires task_id; scoped
+    # to that task's GA). _ctx_for guards unknown task_id / GA-not-yet-spawned
+    # (e.g. queued ctx whose _start_task_thread hasn't run).
+    #
+    # session/resume ordering: set backend.history FIRST, then next_llm(llm_no).
+    # next_llm internally (agentmain.py:122) copies the current llmclient's
+    # backend.history into the new llmclient, so setting history before the
+    # switch lets it survive the swap; reversing would set it on the stale
+    # llmclient about to be replaced.
+
+    def _ctx_for(self, task_id, msg):
+        with self._pool_lock:
+            ctx = self.pool.get(task_id)
+        if ctx is None or ctx.ga is None:
+            self.send_error("unknown_task", f"no GA for task {task_id!r}",
+                            original_id=msg.get("id"))
+            return None
+        return ctx
+
+    def handle_llm_list(self, msg):
+        ctx = self._ctx_for(msg.get("task_id"), msg)
+        if ctx is None:
+            return
+        rows = ctx.ga.list_llms()  # [(i, name, current_bool)]
+        llms = [{"no": i, "name": n, "current": c} for i, n, c in rows]
+        current_no = next((i for i, _, c in rows if c), 0)
+        self.send({"id": msg["id"], "type": "llm/list", "version": VERSION,
+                   "llms": llms, "current_no": current_no})
+
+    def handle_llm_select(self, msg):
+        ctx = self._ctx_for(msg.get("task_id"), msg)
+        if ctx is None:
+            return
+        n = msg.get("n", 0)
+        try:
+            ctx.ga.next_llm(n)
+            self.send({"id": msg["id"], "type": "llm/ack", "version": VERSION,
+                       "task_id": ctx.task_id, "selected_no": n, "ok": True})
+        except Exception as e:
+            self.send_error("llm_select_failed", f"{type(e).__name__}: {e}",
+                            original_id=msg.get("id"))
+
+    def handle_session_resume(self, msg):
+        ctx = self._ctx_for(msg.get("task_id"), msg)
+        if ctx is None:
+            return
+        history = msg.get("history", [])
+        llm_no = msg.get("llm_no")
+        try:
+            ctx.ga.llmclient.backend.history = history
+            if llm_no is not None:
+                ctx.ga.next_llm(llm_no)
+            self.send({"id": msg["id"], "type": "session/ack", "version": VERSION,
+                       "task_id": ctx.task_id, "ok": True})
+        except Exception as e:
+            self.send_error("session_resume_failed", f"{type(e).__name__}: {e}",
+                            original_id=msg.get("id"))
 
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.
