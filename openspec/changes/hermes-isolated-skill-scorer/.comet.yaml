@@ -1,6 +1,6 @@
 workflow: full
 language: zh-CN
-phase: build
+phase: verify
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -8,13 +8,13 @@ subagent_dispatch: confirmed
 tdd_mode: tdd
 review_mode: standard
 isolation: worktree
-verify_mode: null
+verify_mode: full
 auto_transition: true
 base_ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 design_doc: docs/superpowers/specs/2026-07-19-hermes-isolated-skill-scorer-design.md
 plan: docs/superpowers/plans/2026-07-19-hermes-isolated-skill-scorer.md
 verify_result: pending
-verification_report: null
+verification_report: docs/superpowers/reports/2026-07-19-hermes-isolated-skill-scorer-verify.md
 branch_status: pending
 created_at: 2026-07-19
 verified_at: null
@@ -24,4 +24,4 @@ handoff_context: openspec/changes/hermes-isolated-skill-scorer/.comet/handoff/de
 handoff_hash: de77adc774ddd51feb5ad1393874d79323a97c9959873ed741010808e5486202
 classic_profile: full
 classic_migration: 1
-run_id: 333c8911-5234-46e8-a703-e2b149ab68df
+run_id: fa6b279c-975f-4498-b0e6-07e3ef58418a
