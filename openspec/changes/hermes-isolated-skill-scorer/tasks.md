@@ -16,7 +16,7 @@
 
 - [x] 3.1 `SubagentScorer` 构造 `desc`:候选 SKILL.md 全文 + `history_info[-40:]` 快照 + catalog 文本;**断言不含** `op.get('reason')` 与生成器 prompt 片段(单测 `assert 'reason' not in desc` 类)
 - [x] 3.2 `tools_subset` 限定 `['file_read']`(强制 `submit_result` 由 `run_single`/`_apply_task_mode` 注入);确认不给 `code_run`/`file_write`/`web_scan`/`file_patch`(单测断言 `GA_TASK_TOOLS` env 不含这些)
-- [ ] 3.3 Open Question 复核:是否给 `get_skill_detail`(查冗余)——v1 先 `file_read` 兜底,`get_skill_detail` 列为 follow-up(本 change 不实现)
+- [x] 3.3 Open Question 复核:是否给 `get_skill_detail`(查冗余)——v1 先 `file_read` 兜底,`get_skill_detail` 列为 follow-up(本 change 不实现)
 
 ## 4. R6 熔断复位修复
 
@@ -44,6 +44,6 @@
 
 ## 7. 文档
 
-- [ ] 7.1 `AGENTS.md` 登记 `GA_SKILL_SCORER` env gate 与 `GA_SKILL_SCORER_THRESHOLD`/`GA_SKILL_SCORER_TIMEOUT`(若需)
-- [ ] 7.2 更新 `hermes/NOTES_v1.5_recommendations.md`:标 R2 已实现(independence-by-construction 落地)+ R6 已修;R1/R3/R5/R7/R8/R9 仍 open
-- [ ] 7.3 更新 `HANDOFF.md` 或新增 design 摘要(交接用)
+- [x] 7.1 `AGENTS.md` 登记 `GA_SKILL_SCORER` env gate 与 `GA_SKILL_SCORER_THRESHOLD`/`GA_SKILL_SCORER_TIMEOUT`(若需)
+- [x] 7.2 更新 `hermes/NOTES_v1.5_recommendations.md`:标 R2 已实现(independence-by-construction 落地)+ R6 已修;R1/R3/R5/R7/R8/R9 仍 open
+- [x] 7.3 更新 `HANDOFF.md` 或新增 design 摘要(交接用)

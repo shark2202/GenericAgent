@@ -1523,7 +1523,7 @@ monkeypatch.setenv("GA_SKILL_SCORER", "off")  # 既有 v1 行为测试走 legacy
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿(策略 A 补 env 后)。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py tests/test_skill_evolution_plugin.py
@@ -1826,7 +1826,7 @@ git commit -m "test(skill-scoring): ruff clean + full pytest regression (task 6.
 - Modify: `hermes/NOTES_v1.5_recommendations.md`(R2/R6 状态)
 - Modify: `HANDOFF.md`(或新增 design 摘要段)
 
-- [ ] **Step 1: 在 `AGENTS.md` 登记 env gate**
+- [x] **Step 1: 在 `AGENTS.md` 登记 env gate**
 
 在 `AGENTS.md` 的 env 表(若有)或显式 env 文档段追加:
 ```markdown
@@ -1837,7 +1837,7 @@ git commit -m "test(skill-scoring): ruff clean + full pytest regression (task 6.
 | `GA_SKILL_SCORER_TIMEOUT` | `600` | `SubagentScorer` 子 agent 超时(秒),超时 → 降级 `InProcessScorer` |
 ```
 
-- [ ] **Step 2: 在 `hermes/NOTES_v1.5_recommendations.md` 标 R2/R6 状态**
+- [x] **Step 2: 在 `hermes/NOTES_v1.5_recommendations.md` 标 R2/R6 状态**
 
 在 R2 条目标"已实现(hermes-isolated-skill-scorer)":
 ```markdown
@@ -1852,7 +1852,7 @@ git commit -m "test(skill-scoring): ruff clean + full pytest regression (task 6.
 - v2 follow-up:`get_skill_detail` 工具给评判官(查冗余更准,OQ1 决议本 change 用 `file_read` 兜底)。
 ```
 
-- [ ] **Step 3: 在 `HANDOFF.md` 加 design 摘要段(或新增)**
+- [x] **Step 3: 在 `HANDOFF.md` 加 design 摘要段(或新增)**
 
 在 `HANDOFF.md` 末尾追加(或新建 design 摘要段):
 ```markdown
@@ -1881,12 +1881,12 @@ subagents 未合并到 dev → `_subagent_mgr=None` → 缺省走 inprocess(本 
 (行为修复,回退到"永不复位"bug 态不可接受)。
 ```
 
-- [ ] **Step 4: 跑既有回归确认文档改动不破测试**
+- [x] **Step 4: 跑既有回归确认文档改动不破测试**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py tests/test_skill_scoring.py -v`
 Expected: 全绿(文档改动不影响测试)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add AGENTS.md hermes/NOTES_v1.5_recommendations.md HANDOFF.md
