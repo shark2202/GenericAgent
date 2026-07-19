@@ -648,7 +648,7 @@ git commit -m "feat(ga_stdio): single-task streaming — put_task→drain displa
 - Consumes: `plugins.hooks.register` / `trigger`（`plugins/hooks.py`）、`GenericAgentHandler.parent`（`ga.py:30`）。
 - Produces: `ga_stdio._resolve_ga_from_ctx(ctx)`、`BridgeCore.register_hooks()`。
 
-- [ ] **Step 1: 写失败测试——ctx 反查 + tool/call 序列化**
+- [x] **Step 1: 写失败测试——ctx 反查 + tool/call 序列化**
 
 追加到 `tests/test_ga_stdio_unit.py`：
 
@@ -721,7 +721,7 @@ def test_tool_result_from_turn_after_ctx():
     assert results[1]["tool_id"] == "tu_2"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -729,7 +729,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `AttributeError: module 'ga_stdio' has no attribute '_resolve_ga_from_ctx'`。
 
-- [ ] **Step 3: 实现 hook 注册 + ctx 反查 + tool/call+result 回调**
+- [x] **Step 3: 实现 hook 注册 + ctx 反查 + tool/call+result 回调**
 
 在模块级（`BridgeCore` 类前）加反查函数：
 
@@ -824,7 +824,7 @@ def _resolve_ga_from_ctx(ctx):
 
 （`ga_to_task` 反查已在 Task 2 的 `handle_task_start` 里 `with self._pool_lock` 块内写入；`_release_task` 里 pop——Task 2 已包含。）
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -832,7 +832,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（12 个测试全过）。
 
-- [ ] **Step 5: 勾选 + 提交**
+- [x] **Step 5: 勾选 + 提交**
 
 勾选 tasks.md §3.3（tool 事件部分）。
 
