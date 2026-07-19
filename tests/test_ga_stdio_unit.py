@@ -683,3 +683,73 @@ def test_handle_task_interrupt_abort_success_sets_flag_and_acks():
     assert acks[0]["task_id"] == "t3"
     assert acks[0]["status"] == "interrupting"
     assert acks[0]["id"] == 300
+
+
+# ---- Task 5: approval loop — patch ask_user, block agent thread, continuation ----
+#
+# Covers design §6.4 / tasks.md §3.7 / S4. The approval path:
+# 1. tool_before fires for ask_user → _on_approval_request stamps the current GA
+#    onto the patched ask_user closure and sets ctx.pending_approval (so the
+#    upcoming done is recognized as ask_user-caused, not a real completion).
+# 2. do_ask_user (ga.py:76-81) calls ga_utils.ask_user — bridge patches it at
+#    startup with _bridge_ask_user, which emits approval/request and blocks on
+#    a threading.Event until approval/response arrives.
+# 3. handle_approval_response (stdio reader thread) fills the box + sets the
+#    Event → blocked agent thread wakes, returns client's input → do_ask_user's
+#    StepOutcome carries it → should_exit=True → agent_loop break → run() done.
+# 4. drain_display_queue sees pending_approval → re-feeds the input as a new
+#    prompt on the SAME GA (history preserved, task_id unchanged) and continues
+#    draining the new display_queue — client sees no task boundary.
+
+def test_approval_request_emits_and_response_wakes():
+    """_on_approval_request stamps GA + sets pending flag; the patched ask_user
+    (called by do_ask_user on the same agent thread) emits approval/request and
+    blocks; handle_approval_response fills the box and sets the Event."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    ga = _FakeGAWithAbort()
+    ctx = ga_stdio.TaskCtx(ga=ga, dq=queue.Queue(), task_id="t1", thread=None)
+    with core._pool_lock:
+        core.pool["t1"] = ctx
+        core.ga_to_task[id(ga)] = "t1"
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core._patch_ask_user()
+    core._bridge_ask_user._current_ga = ga
+    # _on_approval_request only stamps GA + flag; the actual approval/request
+    # is emitted by the patched ask_user when do_ask_user calls it. Simulate that:
+    core._on_approval_request(task_id="t1", tool_id="tool_1",
+                              args={"question": "continue?", "candidates": ["y", "n"]})
+    assert ctx.pending_approval is True
+    # simulate do_ask_user calling our patched ask_user (on the agent thread):
+    import threading as _th
+    box = {}
+    th = _th.Thread(target=lambda: box.update({"ret": core._bridge_ask_user("continue?", ["y", "n"])}),
+                    daemon=True)
+    th.start()
+    # the patched ask_user should have emitted approval/request and be blocking
+    import time as _t; _t.sleep(0.05)
+    reqs = [m for m in sent if m["type"] == "approval/request"]
+    assert len(reqs) == 1
+    assert reqs[0]["task_id"] == "t1"
+    assert reqs[0]["prompt"] == "continue?"
+    assert reqs[0]["options"] == ["y", "n"]
+    # client responds → handle_approval_response wakes the blocked thread
+    tool_id = reqs[0]["tool_id"]
+    core.handle_approval_response({"id": 200, "type": "approval/response",
+                                   "task_id": "t1", "tool_id": tool_id,
+                                   "decision": "approve", "input": "yes please"})
+    th.join(timeout=2)
+    assert not th.is_alive()
+    assert box["ret"] == "yes please"
+    assert ctx._approval_input == "yes please"
+
+
+def test_approval_response_unknown_slot_emits_stale_approval():
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_approval_response({"id": 200, "type": "approval/response",
+                                   "task_id": "ghost", "tool_id": "tool_x",
+                                   "decision": "approve"})
+    assert sent[-1]["type"] == "error"
+    assert sent[-1]["code"] == "stale_approval"

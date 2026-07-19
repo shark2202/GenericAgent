@@ -121,6 +121,11 @@ class BridgeCore:
         self._tool_id_counter = 0
         self._pool_lock = threading.Lock()
         self._hooks_registered = False
+        # Task 5: approval loop state. _pending_approvals maps
+        # (task_id, tool_id) → (Event, box); the patched ask_user blocks on
+        # the Event, handle_approval_response fills the box + sets it.
+        self._pending_approvals = {}   # {(task_id, tool_id): (Event, box)}
+        self._ask_user_patched = False
 
     def _next_id(self):
         i = self._next_event_id
@@ -187,12 +192,15 @@ class BridgeCore:
         # assigns a task_id, spawns a GA, drains display_queue → task/delta
         # + task/done. Other business types still fall through to unknown_type
         # until wired in later tasks (Task 3+ for tool events, Task 4 for
-        # interrupt, Task 7 for autonomous, Task 8 for approval).
+        # interrupt, Task 5 for approval, Task 7 for autonomous).
         if mtype == "task/start":
             self.handle_task_start(msg)
             return
         if mtype == "task/interrupt":
             self.handle_task_interrupt(msg)
+            return
+        if mtype == "approval/response":
+            self.handle_approval_response(msg)
             return
         # Business handlers wired in later tasks; skeleton rejects as
         # unknown_type so the protocol contract is observable now.
@@ -333,6 +341,20 @@ class BridgeCore:
                            "turn": item.get("turn", 0)})
                 continue
             if "done" in item:
+                # Approval continuation: this done was caused by ask_user
+                # (do_ask_user returns should_exit=True → agent_loop break → done).
+                # Re-feed the client's approved input as a new prompt on the SAME
+                # GA instance (history preserved, task_id unchanged, client sees
+                # no task boundary).
+                if getattr(ctx, "pending_approval", False):
+                    ctx.pending_approval = False
+                    cont = getattr(ctx, "_approval_input", None)
+                    ctx._approval_input = None
+                    if cont is not None and str(cont).strip() != "":
+                        ctx.dq = ctx.ga.put_task(cont, source="stdio")
+                        continue   # drain the new dq
+                    # reject / empty input → fall through to normal done below
+                # (normal done path below — unchanged from Task 2)
                 done_text = item.get("done", "")
                 # agentmain except branch (agentmain.py:239) appends a trailing
                 # ```\n{format_error}\n``` block to done text on engine errors.
@@ -428,9 +450,85 @@ class BridgeCore:
             self.send({"id": self._next_id(), "type": "tool/result", "version": VERSION,
                        "tool_id": tool_use_id, "task_id": task_id, "content": content})
 
+    def _patch_ask_user(self):
+        """Monkey-patch ga_utils.ask_user so do_ask_user calls our bridge version.
+
+        NOT a source edit to ga_utils.py — bridge owns its own process namespace.
+        ga_utils.ask_user(question, candidates=None) currently returns a non-blocking
+        INTERRUPT dict (ga_utils.py:30-33); we replace it with a blocking call that
+        waits on the approval response from the stdio reader thread, then returns
+        the client's input so do_ask_user's StepOutcome carries it.
+        """
+        if self._ask_user_patched:
+            return
+        self._ask_user_patched = True
+        import ga_utils
+
+        def _bridge_ask_user(question, candidates=None):
+            """Blocking: emit approval/request, wait for approval/response, return input."""
+            ga = _bridge_ask_user._current_ga
+            with self._pool_lock:
+                task_id = self.ga_to_task.get(id(ga)) if ga is not None else None
+            if task_id is None:
+                # GA not in pool — fall back to old non-blocking behavior
+                return {"status": "INTERRUPT", "intent": "HUMAN_INTERVENTION",
+                        "data": {"question": question, "candidates": candidates or []}}
+            self._tool_id_counter += 1
+            tool_id = f"ask_{self._tool_id_counter}"
+            ev = threading.Event()
+            box = {}
+            self._pending_approvals[(task_id, tool_id)] = (ev, box)
+            self.send({"id": self._next_id(), "type": "approval/request", "version": VERSION,
+                       "task_id": task_id, "tool_id": tool_id,
+                       "prompt": question, "options": candidates or []})
+            ev.wait()  # blocks the agent thread until approval/response arrives
+            decision = box.get("decision", "reject")
+            if decision == "approve":
+                return box.get("input", "")   # becomes do_ask_user's StepOutcome.data
+            return {"status": "REJECTED", "data": {"question": question}}
+
+        _bridge_ask_user._current_ga = None
+        ga_utils.ask_user = _bridge_ask_user
+        self._bridge_ask_user = _bridge_ask_user
+
     def _on_approval_request(self, task_id, tool_id, args):
-        """Wired in Task 5. Stub here so tool_before doesn't crash on ask_user."""
-        pass
+        """tool_before callback for ask_user: stamp the current GA onto the patched
+        ask_user so it can route, and set pending_approval so drain_display_queue
+        knows the upcoming done is ask_user-caused and should continue instead of
+        emitting task/done."""
+        ga = None
+        with self._pool_lock:
+            ctx = self.pool.get(task_id)
+            if ctx is not None:
+                ga = ctx.ga
+                ctx.pending_approval = True
+                ctx._last_approval_input_ref = (task_id, tool_id)
+        if self._ask_user_patched and ga is not None:
+            self._bridge_ask_user._current_ga = ga
+        # The actual approval/request is emitted by the patched ask_user when
+        # do_ask_user calls it (next in dispatch, same agent thread) — avoids a
+        # race where we emit before ev.wait() is armed.
+
+    def handle_approval_response(self, msg):
+        task_id = msg.get("task_id")
+        tool_id = msg.get("tool_id")
+        slot = self._pending_approvals.pop((task_id, tool_id), None)
+        if slot is None:
+            self.send_error("stale_approval",
+                            f"no pending approval for {tool_id} on {task_id}",
+                            original_id=msg.get("id"))
+            return
+        ev, box = slot
+        box["decision"] = msg.get("decision", "reject")
+        box["input"] = msg.get("input", "")
+        # stash input on ctx so drain_display_queue can re-feed as continuation
+        with self._pool_lock:
+            ctx = self.pool.get(task_id)
+        if ctx is not None:
+            ctx._approval_input = box.get("input", "")
+        ev.set()  # wake the blocked agent thread
+        self.send({"id": msg["id"], "type": "approval/ack", "version": VERSION,
+                   "task_id": task_id, "tool_id": tool_id, "status": "accepted"})
 
     def serve(self):
         """Main stdio reader loop. One JSON line per stdin line.
@@ -440,6 +538,7 @@ class BridgeCore:
         and the child process exits; the client detects stdout EOF (E1).
         """
         self.register_hooks()   # Task 3: wire tool_before/turn_after once
+        self._patch_ask_user()  # Task 5: intercept ga_utils.ask_user → approval loop
         for line in self.stdin:
             stripped = line.strip()
             if not stripped:
