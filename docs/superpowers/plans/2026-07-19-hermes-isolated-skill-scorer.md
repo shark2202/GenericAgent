@@ -312,7 +312,7 @@ git commit -m "feat(skill-scoring): add Verdict/Scorer/SCORE_SCHEMA/thresholds (
 - Consumes: `Verdict`/`VerdictKind`/`SCORE_SCHEMA`(Task 1)、`handler.client`(`LLMClient`,有 `.chat(messages, tools=[])`)
 - Produces: `InProcessScorer(client)` 类,`.score(op, skill_md, history, catalog) -> Verdict`;`_validate_obj(obj, schema) -> None`(校验失败抛 `ScorerDegraded`);`_extract_json(content) -> dict|None`(容错解析代码块/裸 JSON);`ScorerDegraded(Exception)`
 
-- [ ] **Step 1: 写失败测试(monkeypatch client.chat 返回合规/非合规 → Verdict 映射/降级)**
+- [x] **Step 1: 写失败测试(monkeypatch client.chat 返回合规/非合规 → Verdict 映射/降级)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -413,12 +413,12 @@ def test_inprocess_scorer_handles_codeblock_json():
     assert v.source == "inprocess"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `pytest tests/test_skill_scoring.py -v -k inprocess`
 Expected: FAIL with `ImportError: cannot import name 'InProcessScorer'`。
 
-- [ ] **Step 3: 实现 `InProcessScorer` + 辅助函数**
+- [x] **Step 3: 实现 `InProcessScorer` + 辅助函数**
 
 在 `plugins/skill_evolution.py` Task 1 新增的 `SCORE_SCHEMA` 后追加:
 ```python
@@ -550,17 +550,17 @@ class InProcessScorer:
         )
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v -k inprocess`
 Expected: PASS(6 个 inprocess 测试全绿)。
 
-- [ ] **Step 5: 跑既有回归**
+- [x] **Step 5: 跑既有回归**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py
@@ -742,7 +742,7 @@ def test_subagent_scorer_desc_actually_excludes_reason():
     assert "GENERATOR_REASON_MUST_NOT_LEAK" not in desc
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `pytest tests/test_skill_scoring.py -v -k "subagent or build_scorer_desc"`
 Expected: FAIL with `ImportError: cannot import name 'SubagentScorer'`。
@@ -810,17 +810,17 @@ class SubagentScorer:
         )
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v -k "subagent or build_scorer_desc"`
 Expected: PASS(11 个测试全绿)。
 
-- [ ] **Step 5: 跑既有回归**
+- [x] **Step 5: 跑既有回归**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py
@@ -998,7 +998,7 @@ def test_distill_none_op_skips_gate(monkeypatch):
     assert len(c.chat_calls) == 1                   # 只生成 op,无 scorer 调用
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `pytest tests/test_skill_scoring.py -v -k distill_gate`
 Expected: FAIL —— 既有 `distill()` L148-154 直接 `_apply_op`,无闸门;`_scoring_enabled` 未定义。
@@ -1102,7 +1102,7 @@ def _score_with_fallback(handler, op, skill_md, history, catalog) -> Verdict:
         sys.stderr.write(f"[skill_evolution] apply_op failed: {e}\n")
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v -k distill_gate`
 Expected: PASS(6 个闸门测试全绿)。
@@ -1112,7 +1112,7 @@ Expected: PASS(6 个闸门测试全绿)。
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿。**若失败**:既有 `distill()` 测试可能未设 `GA_SKILL_SCORER` env → 默认走 InProcessScorer(需 mock client.chat 两次)。检查 `test_skill_evolution_plugin.py` 是否有 distill 端到端测试;若有,需在测试里显式 `monkeypatch.setenv("GA_SKILL_SCORER", "off")` 或 mock `client.chat` 多次返回。**修复策略**:既有 distill 测试若依赖单次 chat,补 `GA_SKILL_SCORER=off` 使其走 v1 路径(不破语义)。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py
@@ -1262,17 +1262,17 @@ Expected: 大部分 PASS(Task 4 已实现基础版);若未知 mode 兜底分支�
     return InProcessScorer(handler.client)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_skill_scoring.py -v -k "resolve_scorer or score_with_fallback"`
 Expected: PASS(11 个测试全绿)。
 
-- [ ] **Step 5: 跑既有回归**
+- [x] **Step 5: 跑既有回归**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py -v`
 Expected: 既有 ~64 测试全绿。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add plugins/skill_evolution.py tests/test_skill_scoring.py
@@ -1421,7 +1421,7 @@ def test_r6_foreground_reset_unlocks_after_cap(monkeypatch):
     assert se._auto_patch_counts["s"] == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `pytest tests/test_skill_scoring.py -v -k r6`
 Expected: FAIL —— `reset_auto_patch_count` 未定义;`_apply_op` L104-107 无条件累加,foreground 不复位。
@@ -1607,12 +1607,12 @@ Expected: PASS(当前 dev 无 `subagent_manager`,断言成立)或 SKIP(若已合
 
 **无需改 `agentmain.py`**(子模式已由 add-first-class-subagents 实现)。本 Step 仅文档性确认,在 commit message 注明 "5.2 兼容性核对通过,无需改 agentmain.py"。
 
-- [ ] **Step 5: 跑既有回归**
+- [x] **Step 5: 跑既有回归**
 
 Run: `pytest tests/test_skill_evolution.py tests/test_skill_evolution_plugin.py tests/test_skill_loader_l1.py tests/test_skill_scoring.py -v`
 Expected: 全绿(ga.py 改动是 try/except,既有测试不 import ga.py 不受影响;若某测试 import ga.py 在沙箱失败,属既有 env 限制不计入)。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ga.py tests/test_skill_scoring.py
