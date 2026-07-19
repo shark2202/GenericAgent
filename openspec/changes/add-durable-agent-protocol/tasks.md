@@ -15,8 +15,8 @@
 
 ## 3. Python stdio bridge 参考实现
 
-- [ ] 3.1 实现 stdio 读写循环：逐行读 stdin JSON、逐行写 stdout JSON（带 id/type/version）
-- [ ] 3.2 实现 `initialize`/`ready` 握手 + capability 协商
+- [x] 3.1 实现 stdio 读写循环：逐行读 stdin JSON、逐行写 stdout JSON（带 id/type/version）
+- [x] 3.2 实现 `initialize`/`ready` 握手 + capability 协商
 - [ ] 3.3 桥接 `GenericAgent.put_task` → 排空 `display_queue` → 发 `task/delta`/`tool/call`/`tool/result`/`task/done`（参考 `agentmain.py:229-235` item 形状 + `assets/ga_httpapp.py` 排空逻辑）
 - [ ] 3.4 实现 `task/start` 返回 `task_id` + 多会话并发（多 put_task 并行排空）
 - [ ] 3.5 实现 `task/interrupt` → `agent.abort()` → `task/done{reason:interrupted}`

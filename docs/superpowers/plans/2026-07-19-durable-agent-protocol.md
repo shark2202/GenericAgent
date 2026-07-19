@@ -181,7 +181,7 @@ git commit -m "chore(add-durable-agent-protocol): §1.2 confirm hermes-isolated-
 - Consumes: 无前置 task 依赖（Task 0a/0b 是流程前置）。
 - Produces: `ga_stdio._parse_line(line)`、`ga_stdio._serialize(msg)`、`ga_stdio.VERSION`、`ga_stdio.SERVER_CAPABILITIES`、`ga_stdio.BridgeCore`（本 task 仅骨架：`serve()` 跑 stdio 循环 + `handle_initialize` + 错误路由；不处理业务消息）。
 
-- [ ] **Step 1: 写失败测试——帧 parse/serialize + VERSION/caps**
+- [x] **Step 1: 写失败测试——帧 parse/serialize + VERSION/caps**
 
 `tests/test_ga_stdio_unit.py`：
 
@@ -232,7 +232,7 @@ def test_server_capabilities_include_all_v1_caps():
     assert expected.issubset(set(ga_stdio.SERVER_CAPABILITIES))
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -240,7 +240,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: FAIL — `ModuleNotFoundError: No module named 'ga_stdio'`。
 
-- [ ] **Step 3: 实现 ga_stdio.py 骨架**
+- [x] **Step 3: 实现 ga_stdio.py 骨架**
 
 `ga_stdio.py`：
 
@@ -380,7 +380,7 @@ if __name__ == "__main__":
     BridgeCore().serve()
 ```
 
-- [ ] **Step 4: 跑单元测试确认通过**
+- [x] **Step 4: 跑单元测试确认通过**
 
 ```bash
 cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
@@ -388,7 +388,7 @@ cd D:/GenericAgent && python -m pytest tests/test_ga_stdio_unit.py -v
 
 Expected: PASS（5 个测试全过）。
 
-- [ ] **Step 5: 手动 smoke——握手 + 畸形 JSON**
+- [x] **Step 5: 手动 smoke——握手 + 畸形 JSON**
 
 ```bash
 cd D:/GenericAgent && printf '{"id":1,"type":"initialize","version":"1","capabilities":[]}\nnot json\n{"id":2,"type":"task/start","prompt":"hi"}\n' | python -m ga_stdio
@@ -399,7 +399,7 @@ Expected stdout（逐行）：
 2. `{"id":N,"type":"error","version":"1","code":"bad_json",...,"original_id":null}`
 3. `{"id":N,"type":"error","version":"1","code":"unknown_type","message":"task/start not implemented yet",...}`
 
-- [ ] **Step 6: 勾选 + 提交**
+- [x] **Step 6: 勾选 + 提交**
 
 勾选 tasks.md §3.1、§3.2、§3.11（部分）。
 
