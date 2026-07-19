@@ -783,7 +783,7 @@ class BridgeCore:
 
     # ---- Task 8: slash/cmd forward — injection via prompt_for + raw state-class (S8/S9/Q6) ----
     #
-    # Three routing paths plus a default reject, per design §10.8 / §6.6:
+    # Three routing paths plus a default reject, per design §6.6:
     #   1. /scheduler → error{slash_unsupported} (out of protocol scope —
     #      touches local FS via reflect/scheduler.py, no LLM; TUI handles it).
     #   2. Injection-class (_INJECTION_SLASH_CMDS) → prompt_for(cmd, args)
@@ -824,7 +824,7 @@ class BridgeCore:
             # Task 6 pool contract: task/ack{running|queued} carries the
             # allocated task_id (correlates to the upcoming task/delta/done
             # stream), and slash/result carries the slash/cmd id → task_id
-            # correlation + injected prompt summary (design §10.8). Both are
+            # correlation + injected prompt summary (design §6.6). Both are
             # emitted so task/interrupt / approval can find the ctx whether
             # running or queued, and the client can correlate the slash/cmd id
             # → task_id. task/ack uses a fresh server id (not msg["id"]) so
@@ -848,7 +848,13 @@ class BridgeCore:
                        "task_id": task_id,
                        "injected_prompt": injected[:200]})
             return
-        # state-class: raw forward to _handle_slash_cmd via put_task (agentmain.py:155-186)
+        # state-class: raw forward to _handle_slash_cmd via put_task (agentmain.py:155-186).
+        # Symmetric with the injection-class path: task/ack{running|queued} carries
+        # the allocated task_id (correlates to the upcoming task/delta/done stream,
+        # and lets _release_task's wake-up ack not be an orphan); slash/result
+        # carries the slash/cmd id → task_id correlation. No injected_prompt
+        # (state-class has none). task/ack uses a fresh server id (not msg["id"])
+        # so the slash/result's id stays == msg["id"] (the slash ack echo).
         if cmd in _STATE_SLASH_CMDS or cmd.startswith("/session."):
             raw = f"{cmd} {args}".strip()
             task_id = self._new_task_id()
@@ -858,10 +864,14 @@ class BridgeCore:
             with self._pool_lock:
                 self.pool[task_id] = ctx
             if self.semaphore.acquire(blocking=False):
+                self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
+                           "task_id": task_id, "status": "running"})
                 self._start_task_thread(ctx, raw, [])
             else:
                 with self._pool_lock:
                     self._queued.append((ctx, raw, [], msg["id"]))
+                self.send({"id": self._next_id(), "type": "task/ack", "version": VERSION,
+                           "task_id": task_id, "status": "queued"})
             self.send({"id": msg["id"], "type": "slash/result", "version": VERSION,
                        "task_id": task_id})
             return

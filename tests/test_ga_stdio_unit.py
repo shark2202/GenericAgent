@@ -956,6 +956,28 @@ def test_slash_state_command_routes_raw():
     assert len(results) == 1
 
 
+def test_slash_state_command_emits_task_ack_symmetric_with_injection():
+    """/llm 2 → state-class path emits task/ack{running} + slash/result{task_id}
+    (symmetric with injection-class; no orphan ack on queued wake-up)."""
+    core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+    captured = {}
+    class _GA(_FakeGAWithAbort):
+        def put_task(self, q, source=None, images=None):
+            captured["raw"] = q
+            dq = queue.Queue(); dq.put({"done": "ok", "source": source, "turn": 0, "outputs": []}); return dq
+    core._spawn_ga = lambda: _GA()
+    sent = []
+    core.send = lambda m: sent.append(m)
+    core.handle_slash_cmd({"id": 1, "type": "slash/cmd", "cmd": "/llm", "args": "2"})
+    acks = [m for m in sent if m.get("type") == "task/ack"]
+    results = [m for m in sent if m.get("type") == "slash/result"]
+    assert len(acks) == 1
+    assert acks[0]["status"] == "running"
+    assert acks[0]["task_id"] == results[0]["task_id"]
+    assert captured["raw"] == "/llm 2"
+    assert "injected_prompt" not in results[0]   # state-class has no injected prompt
+
+
 def test_slash_unsupported_command_emits_error():
     core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
     sent = []
