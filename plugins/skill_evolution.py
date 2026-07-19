@@ -347,10 +347,41 @@ def _score_with_fallback(handler, op, skill_md, history, catalog) -> Verdict:
         return v
 
 
+# ── Task 6: R6 breaker reset (D5/OQ3) ────────────────────────────
+
+def reset_auto_patch_count(name: str) -> None:
+    """R6 修复:重置单技能自动 patch 计数器(D5/OQ3 决议)。
+
+    在两情形调用,均清零 _auto_patch_counts[name]:
+      (a) foreground do_skill_manage 人工修正 patch 成功(= R6 notes 原意);
+      (b) R2 打分 verdict=='pass' 的 background patch 经 _apply_op 成功(独立校验事件 → 复位 streak)。
+    """
+    _auto_patch_counts[name] = 0
+
+
+def _scoring_on_and_passed(handler, op) -> bool:
+    """判定本次 background patch 是否"打分通过"(R6 清零条件)。
+
+    _apply_op 在 background_review origin 下被调用,此时:
+    - 若 distill 闸门已跑且放行(GA_SKILL_SCORER 非 off + op 到达 _apply_op 即隐含 pass),
+      则视为 scored-pass → R6 清零。
+    - 若 GA_SKILL_SCORER=off(v1 模式),闸门未跑 → legacy 累加。
+
+    简化判定:GA_SKILL_SCORER 非 off 且 skill_write_origin=='background_review' → scored-pass。
+    (foreground 路径不经此判定,直接 reset。)
+    """
+    mode = os.environ.get("GA_SKILL_SCORER", "").lower()
+    if mode in ("off", "none", "false", "0"):
+        return False
+    return skill_write_origin.get() == "background_review"
+
+
 # provenance：标记本次 skill 写入来自前台（LLM 直接调 skill_manage）还是后台蒸馏
 skill_write_origin = contextvars.ContextVar('skill_write_origin', default='foreground')
 
-# 熔断计数：name -> 连续自动 patch 次数；前台修正（do_skill_manage 由 LLM 直调）时重置
+# 熔断计数：name -> 连续自动 patch 次数；前台修正(do_skill_manage 由 LLM 直调)或
+# 打分通过的 background patch(scored-pass = 独立校验事件,OQ3 决议)时经
+# reset_auto_patch_count(name) 清零 —— 兑现 R6(v1 永不复位 bug 已修)。
 _auto_patch_counts = {}
 _consecutive_auto_distills = 0
 
@@ -420,7 +451,18 @@ def _apply_op(handler, op):
     status = getattr(outcome, 'data', None)
     if isinstance(status, dict) and status.get('status') == 'ok':
         if action == 'patch':
-            _auto_patch_counts[name] = _auto_patch_counts.get(name, 0) + 1
+            # R6 修复(D5/OQ3):patch 成功时按 origin + 打分门决定计数器处置
+            if skill_write_origin.get() == 'background_review':
+                # background path
+                if _scoring_on_and_passed(handler, op):
+                    # scored-pass = 独立校验事件 → 清零(OQ3,反推翻 D5 原"不累加")
+                    reset_auto_patch_count(name)
+                else:
+                    # 打分 off(v1 模式)→ 原累加(legacy,spec: "Unscored or rejected background patch behavior unchanged")
+                    _auto_patch_counts[name] = _auto_patch_counts.get(name, 0) + 1
+            else:
+                # foreground do_skill_manage 人工修正 → 清零(D5(a),兑现 R6 notes 原意)
+                reset_auto_patch_count(name)
         _consecutive_auto_distills += 1
     else:
         # 落盘失败/校验失败：不计入连续自动 patch

@@ -124,9 +124,18 @@ class _FakeHandler:
         self._status = status
 
 
-def test_apply_op_patch_succeeds_and_counts():
+def test_apply_op_patch_succeeds_and_counts(monkeypatch):
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")  # 既有 v1 行为走 legacy 累加(策略 A)
     h = _install_fake_skill_manage(status="ok")
-    se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
+    # preset 'background_review' 镜像 _safe_distill 调用上下文(Task 6 _apply_op 改造后:
+    # L413 inner set/reset 后,skill_write_origin.get() 回到 caller 设的值;未设则默认
+    # 'foreground' → 走 foreground else-branch(reset),断言破。设 token 使 background
+    # if-branch 触发 + scoring off → _scoring_on_and_passed=False → legacy 累加)
+    tok = se.skill_write_origin.set('background_review')
+    try:
+        se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
+    finally:
+        se.skill_write_origin.reset(tok)
     assert len(h.calls) == 1
     assert se._auto_patch_counts["s"] == 1
 
@@ -157,18 +166,23 @@ def test_apply_op_missing_fields_skipped():
     assert h.calls == []
 
 
-def test_circuit_breaker_skips_after_max():
+def test_circuit_breaker_skips_after_max(monkeypatch):
     """After MAX_AUTO_PATCH_PER_SKILL successful patches, further patches are
     skipped (brief appended instead) and do_skill_manage is NOT called."""
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")  # 既有 v1 行为走 legacy 累加(策略 A)
     h = _install_fake_skill_manage(status="ok")
     op = {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"}
-    for _ in range(se.MAX_AUTO_PATCH_PER_SKILL):
-        se._apply_op(h, op)
-    assert se._auto_patch_counts["s"] == se.MAX_AUTO_PATCH_PER_SKILL
-    calls_before = len(h.calls)
-    briefs_before = len(h._pending_briefs)
+    tok = se.skill_write_origin.set('background_review')  # 镜像 _safe_distill 调用上下文
+    try:
+        for _ in range(se.MAX_AUTO_PATCH_PER_SKILL):
+            se._apply_op(h, op)
+        assert se._auto_patch_counts["s"] == se.MAX_AUTO_PATCH_PER_SKILL
+        calls_before = len(h.calls)
+        briefs_before = len(h._pending_briefs)
 
-    se._apply_op(h, op)  # (MAX+1)th → circuit trips
+        se._apply_op(h, op)  # (MAX+1)th → circuit trips
+    finally:
+        se.skill_write_origin.reset(tok)
     assert len(h.calls) == calls_before  # do_skill_manage NOT called
     assert len(h._pending_briefs) == briefs_before + 1
     assert any("circuit" in b for b in h._pending_briefs)

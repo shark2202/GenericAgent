@@ -14,6 +14,7 @@ Integration tests (6.7/6.8) live in tests/test_skill_scoring_integration.py
 
 import os
 import sys
+from contextlib import contextmanager
 
 import pytest
 
@@ -593,3 +594,271 @@ def test_score_with_fallback_passes_through_inprocess(monkeypatch):
                              "md", ["h1"], "- cat: d")
     assert v.source == "inprocess"
     assert h._pending_briefs == []
+
+
+# ── Task 6: R6 breaker reset (6.6) ───────────────────────────────
+
+# 注:不顶层 `from plugins.skill_evolution import reset_auto_patch_count`(brief 原
+# 写法)—— 会致 collect-time ImportError 阻断 TDD RED。所有调用点用 se.reset_auto_patch_count
+# (模块属性引用,reload 鲁棒,Task 1 concern),无需顶层 import。
+
+
+@pytest.fixture(autouse=True)
+def _reset_r6_counts_and_registry():
+    """Per-test: clear _auto_patch_counts / _consecutive_auto_distills; save/restore
+    skill_manage tool registry.
+
+    镜像 test_skill_evolution_plugin.py 的 _reset_counts_and_registry —— R6 测试经
+    _install_fake_skill_manage_status 注册 fake skill_manage,需在测试间清理避免污染
+    其他文件(如 test_skill_manage_registry)。
+    """
+    import agent_loop
+    se._auto_patch_counts.clear()
+    se._consecutive_auto_distills = 0
+    saved = agent_loop._TOOL_REGISTRY.get("skill_manage")
+    yield
+    if saved is None:
+        agent_loop._TOOL_REGISTRY.pop("skill_manage", None)
+    else:
+        agent_loop._TOOL_REGISTRY["skill_manage"] = saved
+
+
+@contextmanager
+def _bg_origin():
+    """Preset 'background_review' origin to mirror _safe_distill → distill → _apply_op.
+
+    偏离 brief 逐字测试(brief 测试不 set token 直接调 _apply_op):_apply_op L413 的
+    inner set/reset 后,skill_write_origin.get() 在 status check 处回到 caller 设的值
+    (未设则默认 'foreground')。brief 的 "background path" 测试若不 set token,会走
+    foreground else-branch(reset),无法验证 scored-pass / scoring-off 累加。
+    用 _bg_origin() 包裹 _apply_op 调用,镜像 _safe_distill 在线程入口 set
+    'background_review' 的生产调用链。
+    """
+    tok = se.skill_write_origin.set('background_review')
+    try:
+        yield
+    finally:
+        se.skill_write_origin.reset(tok)
+
+
+def test_reset_auto_patch_count_zeros_counter():
+    se._auto_patch_counts["s"] = 4
+    # 模块属性引用(reload 鲁棒,Task 1 concern):直接 import 的 reset_auto_patch_count
+    # 在 test_threshold_defaults 调 importlib.reload(se) 后 __globals__ 指向旧模块 dict,
+    # 与 se._auto_patch_counts(新模块 dict)不一致 → 假失败。se.reset_auto_patch_count 鲁棒。
+    se.reset_auto_patch_count("s")
+    assert se._auto_patch_counts["s"] == 0
+
+
+def test_reset_auto_patch_count_unknown_name_creates_zero():
+    """reset 未知 name → 创建为 0(幂等)。"""
+    assert "never" not in se._auto_patch_counts
+    se.reset_auto_patch_count("never")
+    assert se._auto_patch_counts["never"] == 0
+
+
+def _install_fake_skill_manage_status(status="ok"):
+    """镜像 test_skill_evolution_plugin.py 的 _install_fake_skill_manage,返回 handler。"""
+    import agent_loop
+
+    class _FH:
+        def __init__(self):
+            self.calls = []
+            self._pending_briefs = []
+
+        @property
+        def _status(self):
+            return status
+
+    h = _FH()
+
+    @agent_loop.register_tool("skill_manage")
+    def _fn(handler, args, response):
+        h.calls.append(dict(args))
+        from tests.test_skill_evolution_plugin import _FakeOutcome
+        yield "streamed"
+        return _FakeOutcome({"status": status, "action": args["action"], "name": args["name"]})
+
+    return h
+
+
+def test_r6_foreground_patch_resets_counter(monkeypatch):
+    """D5(a):foreground do_skill_manage patch 成功 → reset 清零。
+
+    模拟 foreground:不 set background_review token(默认 foreground)→ _apply_op
+    内 L413 set/reset 后,skill_write_origin.get()=='foreground' → 走 else-branch
+    (foreground 修正 → reset)。
+    """
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    se._auto_patch_counts["s"] = 3
+    h = _install_fake_skill_manage_status("ok")
+    # foreground 路径:skill_write_origin 默认 'foreground'(不 set _bg_origin)
+    se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
+    assert se._auto_patch_counts["s"] == 0   # foreground 成功 → 清零
+
+
+def test_r6_scored_pass_background_resets_counter(monkeypatch):
+    """D5(b)/OQ3:scored-pass background patch 成功 → 清零(不是不累加)。"""
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "inprocess")
+    se._auto_patch_counts["s"] = 3
+    h = _install_fake_skill_manage_status("ok")
+    # background path:_bg_origin 预设 'background_review'(镜像 _safe_distill)
+    with _bg_origin():
+        se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
+    # background + scoring on → scored-pass → 清零
+    assert se._auto_patch_counts["s"] == 0
+
+
+def test_r6_scoring_off_background_increments(monkeypatch):
+    """打分 off(v1 模式)background patch → 原累加(legacy)。"""
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")
+    se._auto_patch_counts["s"] = 2
+    h = _install_fake_skill_manage_status("ok")
+    with _bg_origin():
+        se._apply_op(h, {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"})
+    assert se._auto_patch_counts["s"] == 3   # 累加,非清零
+
+
+def test_r6_circuit_still_trips_at_max(monkeypatch):
+    """5 次后第 6 次 → Brief 不落盘(熔断仍有效,R6 修复不破熔断)。"""
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")
+    h = _install_fake_skill_manage_status("ok")
+    op = {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"}
+    with _bg_origin():
+        for _ in range(se.MAX_AUTO_PATCH_PER_SKILL):
+            se._apply_op(h, op)
+        assert se._auto_patch_counts["s"] == se.MAX_AUTO_PATCH_PER_SKILL
+        calls_before = len(h.calls)
+        briefs_before = len(h._pending_briefs)
+        se._apply_op(h, op)   # (MAX+1)th → 熔断
+    assert len(h.calls) == calls_before
+    assert len(h._pending_briefs) == briefs_before + 1
+    assert any("circuit" in b for b in h._pending_briefs)
+
+
+def test_r6_foreground_reset_unlocks_after_cap(monkeypatch):
+    """到达 cap 后 foreground 修正复位 → 后续 auto-patch 不锁死(R6 兑现)。"""
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.setenv("GA_SKILL_SCORER", "off")
+    h = _install_fake_skill_manage_status("ok")
+    op = {"action": "patch", "name": "s", "skill_md": "x", "reason": "r"}
+    with _bg_origin():
+        for _ in range(se.MAX_AUTO_PATCH_PER_SKILL):
+            se._apply_op(h, op)
+        assert se._auto_patch_counts["s"] == se.MAX_AUTO_PATCH_PER_SKILL
+    # foreground 修正复位(direct call,不依赖 token)
+    se.reset_auto_patch_count("s")
+    assert se._auto_patch_counts["s"] == 0
+    # 后续 background auto-patch 不锁死
+    with _bg_origin():
+        se._apply_op(h, op)
+    assert len(h.calls) == se.MAX_AUTO_PATCH_PER_SKILL + 1   # 第 6 次成功落盘
+    assert se._auto_patch_counts["s"] == 1
+
+
+# ── Task 6 (production path): tools/skill_manage.py foreground reset ──
+#
+# 偏离 brief(用户授权):brief Step 3 在 _apply_op 内 foreground else-branch 在
+# 生产中是死代码 —— foreground skill_manage(LLM 直调 tool)不经 _apply_op
+# (_apply_op 只被 distill()←_safe_distill 后台线程调用)。真正兑现 D5(a) foreground
+# 复位:在 tools/skill_manage.py patch 成功路径调 reset_auto_patch_count(name)。
+# 用户明确授权:"若 foreground 不经 _apply_op 则需在 tools/skill_manage.py 补"。
+# 本测试走真实 tools/skill_manage.skill_manage(不经 _apply_op 的 fake),
+# 验证 foreground patch 成功 → counter 清零。
+
+
+def test_r6_foreground_skill_manage_resets_counter(monkeypatch, tmp_path):
+    """D5(a) production path:foreground skill_manage tool patch 成功 → reset 清零。"""
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.delenv("GA_SKILL_SCORER", raising=False)
+    se._auto_patch_counts["s"] = 3
+
+    import tools.skill_manage as sm
+    skill_path = str(tmp_path / "SKILL.md")
+    # mock 磁盘 I/O 依赖(catalog / provenance / backup / validate / cache / sync)
+    monkeypatch.setattr(sm, "_get_skills_catalog",
+                        lambda: ({"s": ("desc", skill_path)}, None))
+    monkeypatch.setattr(sm, "parse_provenance",
+                        lambda p: {"author": "agent", "evolvable": True,
+                                   "evolved_from": None, "version": "0.1"})
+    monkeypatch.setattr(sm, "backup_skill_prev", lambda p: None)
+    monkeypatch.setattr(sm, "validate_skill", lambda p: (True, ""))
+    monkeypatch.setattr(sm, "_reset_skill_cache", lambda: None)
+    monkeypatch.setattr(sm, "sync_skills_to_l1", lambda: None)
+
+    class _H:
+        def __init__(self, cwd):
+            self.cwd = str(cwd)
+            self._pending_briefs = []
+
+        def _get_anchor_prompt(self, skip=False):
+            return "anchor"
+
+    h = _H(tmp_path)
+    # foreground:不 set background_review token(默认 foreground)
+    skill_md = "---\nname: s\ndescription: \"d\"\n---\n# S\n## When\nbody"
+    gen = sm.skill_manage(
+        h, {"action": "patch", "name": "s", "skill_md": skill_md,
+            "reason": "r", "_index": 0}, None)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as e:
+        outcome = e.value
+    assert getattr(outcome, 'data', {}).get('status') == 'ok'
+    assert se._auto_patch_counts["s"] == 0   # foreground 成功 → 清零
+
+
+def test_r6_background_skill_manage_does_not_reset(monkeypatch, tmp_path):
+    """对照:background skill_manage(origin='background_review')→ 不在 skill_manage
+    内 reset(由 _apply_op status check 处理累加/清零);counter 保持原值。
+
+    防御性测试:确保 tools/skill_manage.py 的 reset 调用只在 foreground 触发,
+    不重复 background 路径的计数器处置(避免双重清零/双重累加)。
+    """
+    monkeypatch.setenv("GA_SKILL_EVOLUTION_ENABLED", "1")
+    monkeypatch.delenv("GA_SKILL_SCORER", raising=False)
+    se._auto_patch_counts["s"] = 2
+
+    import tools.skill_manage as sm
+    skill_path = str(tmp_path / "SKILL.md")
+    monkeypatch.setattr(sm, "_get_skills_catalog",
+                        lambda: ({"s": ("desc", skill_path)}, None))
+    monkeypatch.setattr(sm, "parse_provenance",
+                        lambda p: {"author": "agent", "evolvable": True,
+                                   "evolved_from": None, "version": "0.1"})
+    monkeypatch.setattr(sm, "backup_skill_prev", lambda p: None)
+    monkeypatch.setattr(sm, "validate_skill", lambda p: (True, ""))
+    monkeypatch.setattr(sm, "_reset_skill_cache", lambda: None)
+    monkeypatch.setattr(sm, "sync_skills_to_l1", lambda: None)
+
+    class _H:
+        def __init__(self, cwd):
+            self.cwd = str(cwd)
+            self._pending_briefs = []
+
+        def _get_anchor_prompt(self, skip=False):
+            return "anchor"
+
+    h = _H(tmp_path)
+    # background:设 'background_review'(镜像 _apply_op L413 set)
+    tok = se.skill_write_origin.set('background_review')
+    try:
+        skill_md = "---\nname: s\ndescription: \"d\"\n---\n# S\n## When\nbody"
+        gen = sm.skill_manage(
+            h, {"action": "patch", "name": "s", "skill_md": skill_md,
+                "reason": "r", "_index": 0}, None)
+        try:
+            while True:
+                next(gen)
+        except StopIteration as e:
+            outcome = e.value
+    finally:
+        se.skill_write_origin.reset(tok)
+    assert getattr(outcome, 'data', {}).get('status') == 'ok'
+    # background 路径:skill_manage 内不 reset(由 _apply_op status check 处置)
+    # counter 保持原值 2(由调用方 _apply_op 决定累加/清零,本测试只验 skill_manage 不染指)
+    assert se._auto_patch_counts["s"] == 2
