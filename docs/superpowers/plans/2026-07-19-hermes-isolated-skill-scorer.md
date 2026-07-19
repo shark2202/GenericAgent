@@ -1546,7 +1546,7 @@ git commit -m "fix(skill-evolution): R6 breaker reset on foreground/scored-pass 
 - Consumes: `subagent_manager.SubagentManager`(根级模块,未合并到 dev → `ImportError`);`self.cwd`
 - Produces: `GenericAgentHandler._subagent_mgr`(实例或 `None`)
 
-- [ ] **Step 1: 写失败/验证测试(_subagent_mgr 在 ImportError 时为 None)**
+- [x] **Step 1: 写失败/验证测试(_subagent_mgr 在 ImportError 时为 None)**
 
 在 `tests/test_skill_scoring.py` 追加:
 ```python
@@ -1578,7 +1578,7 @@ def test_subagent_mgr_absent_when_module_not_importable(monkeypatch):
 Run: `pytest tests/test_skill_scoring.py -v -k subagent_mgr_absent`
 Expected: PASS(当前 dev 无 `subagent_manager`,断言成立)或 SKIP(若已合并)。
 
-- [ ] **Step 3: 改 `ga.py.__init__` 接线 `_subagent_mgr`**
+- [x] **Step 3: 改 `ga.py.__init__` 接线 `_subagent_mgr`**
 
 在 `ga.py` L27-38 `GenericAgentHandler.__init__` 段,L37 `self._evolution_signal = None` 后追加:
 ```python
@@ -1598,7 +1598,7 @@ Expected: PASS(当前 dev 无 `subagent_manager`,断言成立)或 SKIP(若已合
 
 > **核对:** `SubagentManager(root=self.cwd)` 签名 —— 参见 `subagent_manager.py:122`(worktree 分支,未合并)。合并后若签名变更,据实调整。当前 dev `ImportError` → `self._subagent_mgr = None`,不破既有行为。
 
-- [ ] **Step 4: 确认 agentmain.py 子模式兼容(5.2,文档性核对)**
+- [x] **Step 4: 确认 agentmain.py 子模式兼容(5.2,文档性核对)**
 
 核对 `agentmain.py` 子模式(`GA_TASK_MODE=isolated`)对评判官场景兼容:
 - 评判官 `desc` 不含 `reason`(Task 3 `_build_scorer_desc` 保证)

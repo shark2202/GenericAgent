@@ -27,8 +27,8 @@
 
 ## 5. ga.py 接线
 
-- [ ] 5.1 `GenericAgentHandler.__init__`:实例化 `self._subagent_mgr`(按 subagents `SubagentManager(root=cwd)` 接口);用 try/except + import 检测,`subagent_manager` 不可 import(未合并)时 `self._subagent_mgr=None`(不强制,保独立落地)
-- [ ] 5.2 确认 `agentmain.py` 子模式(`GA_TASK_MODE=isolated`)对评判官场景兼容:评判官 `desc` 不含 `reason`,`tools_subset` 已限定(子模式 `_apply_task_mode` 会强制加 `submit_result`,与本 change 的 `tools_subset=['file_read']` 协同)
+- [x] 5.1 `GenericAgentHandler.__init__`:实例化 `self._subagent_mgr`(按 subagents `SubagentManager(root=cwd)` 接口);用 try/except + import 检测,`subagent_manager` 不可 import(未合并)时 `self._subagent_mgr=None`(不强制,保独立落地)
+- [x] 5.2 确认 `agentmain.py` 子模式(`GA_TASK_MODE=isolated`)对评判官场景兼容:评判官 `desc` 不含 `reason`,`tools_subset` 已限定(子模式 `_apply_task_mode` 会强制加 `submit_result`,与本 change 的 `tools_subset=['file_read']` 协同)
 
 ## 6. 测试
 
