@@ -1,6 +1,6 @@
 workflow: full
 language: zh-CN
-phase: verify
+phase: archive
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -13,11 +13,11 @@ auto_transition: true
 base_ref: a5c8eabd1d46e8d300aac39b74a7813317ea450a
 design_doc: docs/superpowers/specs/2026-07-19-durable-agent-protocol-design.md
 plan: docs/superpowers/plans/2026-07-19-durable-agent-protocol.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-19-add-durable-agent-protocol-verify.md
 branch_status: handled
 created_at: 2026-07-19
-verified_at: null
+verified_at: 2026-07-19
 archived: false
 direct_override: null
 handoff_context: openspec/changes/add-durable-agent-protocol/.comet/handoff/design-context.json
