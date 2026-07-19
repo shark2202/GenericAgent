@@ -27,6 +27,7 @@ import ga_stdio  # noqa: E402
 
 # ---- brief step-1 tests: frame parse/serialize + VERSION/caps ----
 
+
 def test_serialize_roundtrip():
     msg = {"id": 7, "type": "ready", "version": "1", "capabilities": ["streaming"]}
     line = ga_stdio._serialize(msg)
@@ -134,6 +135,7 @@ def test_ready_then_task_start_returns_ack():
     class _FakeGA:
         def put_task(self, query, source="user", images=None):
             return _BlockingDQ()
+
         def shutdown(self):
             pass
 
@@ -308,6 +310,7 @@ def test_handle_task_start_assigns_task_id_and_regs_pool():
     class _FakeGA:
         def put_task(self, query, source="user", images=None):
             return _BlockingDQ()
+
         def shutdown(self):
             pass
 
@@ -536,10 +539,13 @@ class _FakeGAWithAbort:
     """
     def __init__(self):
         self.aborted = False
+
     def abort(self):
         self.aborted = True
+
     def put_task(self, query, source="user", images=None):
         return queue.Queue()
+
     def shutdown(self):
         pass
 
@@ -554,9 +560,11 @@ class _FakeGAWithFailingAbort:
     def __init__(self, exc=None):
         self.aborted = False
         self._exc = exc or RuntimeError("abort boom")
+
     def abort(self):
         self.aborted = True  # simulate partial work before the raise
         raise self._exc
+
     def shutdown(self):
         pass
 
@@ -934,6 +942,7 @@ def test_run_autonomous_emits_budget_done_when_seconds_exhausted():
     class _GA:
         def __init__(self):
             self.calls = 0
+
         def put_task(self, prompt, source=None, images=None):
             dq = queue.Queue()
             if self.calls == 0:
@@ -943,6 +952,7 @@ def test_run_autonomous_emits_budget_done_when_seconds_exhausted():
                 dq.put({"done": "[wrap up]", "source": source, "turn": 2, "outputs": ["[wrap]"]})
             self.calls += 1
             return dq
+
         def abort(self): pass
         def shutdown(self): pass
 
@@ -997,6 +1007,7 @@ def test_slash_state_command_routes_raw():
     """/llm 2 → raw put_task on a fresh GA (state-class, _handle_slash_cmd internal)."""
     core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
     captured = {}
+
     class _GA(_FakeGAWithAbort):
         def put_task(self, q, source=None, images=None):
             captured["raw"] = q
@@ -1015,6 +1026,7 @@ def test_slash_state_command_emits_task_ack_symmetric_with_injection():
     (symmetric with injection-class; no orphan ack on queued wake-up)."""
     core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
     captured = {}
+
     class _GA(_FakeGAWithAbort):
         def put_task(self, q, source=None, images=None):
             captured["raw"] = q
@@ -1052,10 +1064,13 @@ class _FakeGAWithLLM:
     def __init__(self):
         self.switched_to = None
         self.history_set = None
+
     def list_llms(self):
         return [(0, "openai/gpt-4", True), (1, "anthropic/claude", False)]
+
     def next_llm(self, n=-1):
         self.switched_to = n
+
     def shutdown(self): pass
 
 
@@ -1090,9 +1105,11 @@ def test_llm_select_switches_model():
 
 def test_session_resume_restores_history():
     core = ga_stdio.BridgeCore(stdout=open(os.devnull, "w"))
+
     class _GA(_FakeGAWithLLM):
         def __init__(self):
             super().__init__()
+
             class _Backend: history = None
             self.llmclient = type("C", (), {"backend": _Backend()})()
     ga = _GA()
@@ -1125,6 +1142,7 @@ def test_mcp_list_emits_structured_servers(monkeypatch):
             "slack":  [{"name": "post", "description": "post msg",
                         "inputSchema": {"type": "object"}}],
         }
+
         def get_server_names(self):
             return list(self._tools.keys())
 

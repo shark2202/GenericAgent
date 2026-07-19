@@ -1,5 +1,7 @@
 """§4.2 capability negotiation: unsupported cap → graceful error+exit."""
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _protocol_helpers import BridgeProc
 

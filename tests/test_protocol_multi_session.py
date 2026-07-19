@@ -1,5 +1,7 @@
 """§4.4 multi-session: two concurrent tasks, task_ids not crossed (S2)."""
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _protocol_helpers import BridgeProc, initialize, needs_llm
 

@@ -5,7 +5,9 @@ path (handle_slash_cmd spawns a task via the Task 6 pool, then emits the
 slash/result ack-echo). The injection test reads until it sees slash/result
 rather than asserting the very first frame.
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _protocol_helpers import BridgeProc, initialize, needs_llm
 

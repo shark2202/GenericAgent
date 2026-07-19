@@ -1,5 +1,7 @@
 """§4.6 approval closed loop (S4). Agent asks_user → approval/request → response → continue."""
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pytest
 from _protocol_helpers import BridgeProc, initialize, needs_llm

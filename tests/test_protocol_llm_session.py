@@ -5,7 +5,9 @@ _release_task once task/done is emitted, so llm/list on a completed task
 returns unknown_task — the bridge only exposes live task state). This is
 the correct S6 lifecycle: ask_user-style introspection mid-task.
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _protocol_helpers import BridgeProc, initialize, needs_llm
 

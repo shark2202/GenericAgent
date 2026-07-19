@@ -1,5 +1,7 @@
 """§4.7 mcp/list visibility query (S5). Structure only, no MCP config required."""
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _protocol_helpers import BridgeProc, initialize
 
