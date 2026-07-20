@@ -174,3 +174,9 @@ ga_rust/target/
 # GA worktrees (subagent isolation)
 .worktrees/
 .ga/
+
+# go-agents/python-bundle/ is a committed-by-mistake copy of the PBS
+# portable Python runtime (reproducible via scripts/bundle-python.sh).
+# Untrack to keep distribution archives lean (~147MB, not ~185MB) and
+# avoid ~50min assemble stalls from cp-ing 14215 binary files.
+go-agents/python-bundle/
