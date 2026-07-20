@@ -117,6 +117,12 @@ case "$ARCH" in
     while (( ${#_vp[@]} < 4 )); do _vp+=(0); done
     VERSION_NUM="${_vp[0]}.${_vp[1]}.${_vp[2]}.${_vp[3]}"
     say "running ISCC..."
+    # ISCC is a native Windows binary; under git-bash/MSYS, argv that look like
+    # paths (the /Q /D /O /F flags here) get auto-converted to Windows form and
+    # mangled (e.g. /Q → a drive path), which makes ISCC report "You may not
+    # specify more than one script filename". Suppress MSYS path conversion for
+    # this single invocation only — cygpath above already produced Windows paths.
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" \
     "$ISCC" /Q \
       /DSourceRoot="$(to_win "$STAGE")" \
       /DAppVersion="$VERSION" \
